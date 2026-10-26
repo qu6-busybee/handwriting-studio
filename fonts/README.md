@@ -1,0 +1,1 @@
+﻿These handwriting fonts are licensed under the SIL Open Font License 1.1 (https://openfontlicense.org). They are the Latin subsets distributed by Fontsource (https://fontsource.org) from Google Fonts. See the project README for the full list.
