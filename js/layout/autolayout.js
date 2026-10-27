@@ -8,6 +8,7 @@ import { seg } from '../print.js';
 import { analyze, summarize, BLOCK_TYPES } from './analyze.js';
 import { placeBlocks } from './place.js';
 import { paperLabel } from '../paper.js';
+import { recognize, getKey, setKey, isRemembered, MODEL } from './claude.js';
 
 const { state } = S;
 
@@ -60,60 +61,78 @@ const imageSize = (src) => new Promise((res) => {
 export function openAutoLayout() {
   const m = openModal('AI Auto-Layout', { wide: true });
   m.el.classList.add('autolayout');
-  const opts = { start: state.project.pages[state.pageIndex].objects.length ? 'after' : 'after', joinLines: true, indentParagraphs: true, gapParagraphs: false };
-  const images = []; // diagrams: { src, w, h, name }
+  const opts = { start: 'after', joinLines: true, indentParagraphs: true, gapParagraphs: false };
+  // Every added image, numbered from 1. ⟦diagram n⟧ places it on the page;
+  // ⟦image n⟧ marks an image that Claude should read.
+  const images = []; // { n, src, w, h, name }
   let blocks = [];
+  let claudeBlocks = null; // structure returned by Claude (until the text changes)
   let overrides = new Map(); // block index -> chosen type
 
   const ta = h('textarea.al-input', { placeholder: 'Paste or type your notes, an essay, definitions, a list, questions and answers…\n\nOr add images / a document with the buttons below.', spellcheck: true });
   const status = h('div.al-status');
   const summary = h('div.al-summary');
+  const source = h('div.al-source');
   const list = h('div.al-blocks');
+  const claudeBox = h('div.al-claude');
 
   const insertAtCursor = (text) => {
     const pos = ta.selectionStart ?? ta.value.length;
     const before = ta.value.slice(0, pos).replace(/\s*$/, '');
     const after = ta.value.slice(pos).replace(/^\s*/, '');
     ta.value = (before ? before + '\n\n' : '') + text + (after ? '\n\n' + after : '');
-    refresh();
+    ta.dispatchEvent(new Event('input'));
   };
 
-  const refresh = debounce(() => {
-    blocks = analyze(ta.value, { joinLines: opts.joinLines });
-    overrides = new Map([...overrides].filter(([i]) => i < blocks.length));
-    summary.textContent = blocks.length ? `Found: ${summarize(blocks)}` : '';
-    list.replaceChildren(...blocks.slice(0, 200).map((b, i) => {
+  const render = () => {
+    const current = claudeBlocks || blocks;
+    source.textContent = claudeBlocks ? 'Structure from Claude' : 'Structure from built-in rules';
+    source.className = 'al-source' + (claudeBlocks ? ' claude' : '');
+    summary.textContent = current.length ? `Found: ${summarize(current)}` : '';
+    list.replaceChildren(...current.slice(0, 300).map((b, i) => {
       const sel = h('select.al-type', {}, ...Object.entries(BLOCK_TYPES).filter(([k]) => k !== 'image' && k !== 'table').map(([k, l]) => h('option', { value: k }, l)));
-      if (b.type === 'table' || b.type === 'image') sel.disabled = true, sel.append(h('option', { value: b.type }, BLOCK_TYPES[b.type]));
+      if (b.type === 'table' || b.type === 'image') { sel.disabled = true; sel.append(h('option', { value: b.type }, BLOCK_TYPES[b.type])); }
       sel.value = overrides.get(i) || b.type;
       sel.addEventListener('change', () => overrides.set(i, sel.value));
-      const text = b.type === 'table' ? `${b.rows.length} rows × ${Math.max(...b.rows.map((r) => r.length))} columns` : b.type === 'image' ? images[b.image - 1]?.name || 'image' : b.text;
+      const text = b.type === 'table' ? `${b.rows.length} rows × ${Math.max(...b.rows.map((r) => r.length))} columns` : b.type === 'image' ? `${images[b.image - 1]?.name || 'image'}${b.claudeImage && b.text ? ` — ${b.text}` : ''}` : b.text;
       return h('div.al-block.t-' + b.type, sel, h('span', text.length > 140 ? text.slice(0, 140) + '…' : text));
     }));
+  };
+  const refresh = debounce(() => {
+    blocks = analyze(ta.value, { joinLines: opts.joinLines });
+    render();
   }, 250);
-  ta.addEventListener('input', refresh);
+  ta.addEventListener('input', () => {
+    if (claudeBlocks) {
+      claudeBlocks = null;
+      overrides = new Map();
+      status.textContent = 'Text changed: showing the built-in structure again. Run “Recognize with Claude” to update.';
+    }
+    refresh();
+  });
 
   const addImages = async () => {
-    const input = h('input', { type: 'file', accept: 'image/*', multiple: true });
+    const input = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp', multiple: true });
     input.onchange = async () => {
       for (const file of input.files) {
         const src = await readFile(file);
-        const choice = await askImageUse(file.name);
+        const choice = await askImageUse(file.name, !!getKey());
         if (!choice) continue;
-        if (choice === 'diagram') {
-          const size = await imageSize(src);
-          images.push({ src, ...size, name: file.name });
-          insertAtCursor(`⟦diagram ${images.length}⟧`);
-        } else {
+        if (choice === 'ocr') {
           status.textContent = `Reading text from ${file.name}… (first use downloads the OCR engine, ~10 MB)`;
           try {
             const text = await ocr(src, (pct) => { status.textContent = `Reading text from ${file.name}… ${pct}%`; });
             insertAtCursor(text || '');
-            status.textContent = text ? `Added text from ${file.name}. Check it below; OCR can misread characters.` : `No text found in ${file.name}.`;
+            status.textContent = text ? `Added text from ${file.name}. Check it; OCR can misread characters.` : `No text found in ${file.name}.`;
           } catch (e) {
             status.textContent = `Couldn’t read ${file.name}: ${e.message}`;
           }
+          continue;
         }
+        const size = await imageSize(src);
+        images.push({ n: images.length + 1, src, ...size, name: file.name });
+        insertAtCursor(choice === 'diagram' ? `⟦diagram ${images.length}⟧` : `⟦image ${images.length}⟧`);
+        if (choice === 'claude') status.textContent = `${file.name} will be read by Claude. Click “Recognize with Claude” when your content is ready.`;
       }
     };
     input.click();
@@ -136,9 +155,59 @@ export function openAutoLayout() {
     input.click();
   };
 
+  // ---------- Claude (optional) ----------
+  const runClaude = async (btn) => {
+    const used = new Set([...ta.value.matchAll(/⟦(?:image|diagram) (\d+)⟧/g)].map((x) => +x[1]));
+    const toSend = images.filter((im) => used.has(im.n));
+    if (!ta.value.replace(/⟦(?:image|diagram) \d+⟧/g, '').trim() && !toSend.length) return toast('Add some content first');
+    btn.disabled = true;
+    try {
+      const res = await recognize({ text: ta.value, images: toSend }, { onStatus: (s) => { status.textContent = s; } });
+      claudeBlocks = res.blocks;
+      overrides = new Map();
+      render();
+      const u = res.usage;
+      status.textContent = `Claude found ${res.blocks.length} pieces (${(u.input_tokens || 0).toLocaleString()} in / ${(u.output_tokens || 0).toLocaleString()} out tokens, about $${res.cost.toFixed(res.cost < 0.1 ? 3 : 2)}). Review them, then lay out.`;
+    } catch (e) {
+      status.textContent = e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  };
+
+  const renderClaude = () => {
+    if (getKey()) {
+      const btn = h('button.btn.block.claude-go', { on: { click: () => runClaude(btn) } }, 'Recognize with Claude');
+      claudeBox.replaceChildren(
+        h('h4', 'Claude (optional)'),
+        btn,
+        h('p.muted.small', `Sends the text and any images marked “Read with Claude” to Anthropic (${MODEL}) using your key. Billed to your Anthropic account. Better than the built-in rules for photos, handwriting, tables and messy text.`),
+        h('div.row.tight', h('span.muted.small.grow', isRemembered() ? 'Key saved in this browser.' : 'Key kept for this session only.'),
+          h('button.btn.small.ghost', { on: { click: () => { setKey(null); renderClaude(); toast('API key removed from this browser'); } } }, 'Remove key')));
+    } else {
+      const keyIn = h('input', { type: 'password', placeholder: 'sk-ant-…', autocomplete: 'off', spellcheck: false });
+      const remember = h('input', { type: 'checkbox' });
+      claudeBox.replaceChildren(
+        h('h4', 'Claude (optional)'),
+        h('p.muted.small', 'Add your own Anthropic API key to have Claude read images and recognise structure. Your key stays in this browser and is only sent to Anthropic. Usage is billed to your Anthropic account.'),
+        keyIn,
+        h('label.check', remember, 'Remember on this device'),
+        h('button.btn.block', { on: { click: () => {
+          const k = keyIn.value.trim();
+          if (!/^sk-ant-/.test(k)) return toast('That doesn’t look like an Anthropic API key (sk-ant-…)');
+          setKey(k, remember.checked);
+          renderClaude();
+          toast('Claude is ready');
+        } } }, 'Use this key'));
+    }
+  };
+  renderClaude();
+
   const run = () => {
-    if (!blocks.length) return toast('Add some content first');
-    const final = blocks.map((b, i) => (overrides.has(i) && overrides.get(i) !== b.type ? retype(b, overrides.get(i)) : b));
+    const current = claudeBlocks || blocks;
+    if (!current.length) return toast('Add some content first');
+    if (!claudeBlocks && /⟦image \d+⟧/.test(ta.value)) return toast('Some images are set to be read by Claude. Click “Recognize with Claude” first, or remove them.', 5000);
+    const final = current.map((b, i) => (overrides.has(i) && overrides.get(i) !== b.type ? retype(b, overrides.get(i)) : b));
     try {
       const res = placeBlocks(final, { ...opts, images });
       if (state.project.stage === 'handwriting') state.project.stage = 'edit'; // review the layout first
@@ -171,7 +240,9 @@ export function openAutoLayout() {
       h('label.check', h('input', { type: 'checkbox', checked: true, on: { change: (e) => { opts.joinLines = e.target.checked; refresh(); } } }), 'Join lines that were wrapped when copied'),
       h('label.check', h('input', { type: 'checkbox', checked: true, on: { change: (e) => { opts.indentParagraphs = e.target.checked; } } }), 'Indent paragraphs'),
       h('label.check', h('input', { type: 'checkbox', on: { change: (e) => { opts.gapParagraphs = e.target.checked; } } }), 'Blank line between paragraphs'),
+      claudeBox,
       h('h4', 'Detected structure'),
+      source,
       summary,
       h('p.muted.small', 'Change a type if it was guessed wrong. Your wording is never changed.'),
       list));
@@ -179,6 +250,7 @@ export function openAutoLayout() {
     h('span.muted.small.grow', 'Content appears as plain text so you can review it. Nothing is handwritten until you click Generate Handwriting.'),
     h('button.btn', { on: { click: m.close } }, 'Cancel'),
     h('button.btn.primary', { on: { click: run } }, 'Lay out on paper'));
+  render();
   setTimeout(() => ta.focus(), 0);
 }
 
@@ -192,12 +264,17 @@ function retype(b, type) {
   return { type, text };
 }
 
-function askImageUse(name) {
+function askImageUse(name, claudeReady) {
   return new Promise((res) => {
     const m = openModal('How should this image be used?', { onClose: () => res(null) });
-    m.body.append(h('p', h('b', name)), h('p.muted.small', 'Read text turns a screenshot or photo of notes into editable text (on your device). Place as diagram puts the picture itself on the page.'));
+    m.body.append(h('p', h('b', name)), h('ul.muted.small.choices',
+      h('li', h('b', 'Read text (on device)'), ': turns a clear screenshot of typed text into editable text. Nothing leaves your computer.'),
+      claudeReady && h('li', h('b', 'Read with Claude'), ': best for photos, handwritten notes, tables and worksheets. Sent to Anthropic with your API key.'),
+      h('li', h('b', 'Place as diagram'), ': puts the picture itself on the page.')));
+    const pick = (v) => () => { res(v); m.close(); };
     m.foot.append(
-      h('button.btn', { on: { click: () => { res('diagram'); m.close(); } } }, 'Place as diagram'),
-      h('button.btn.primary', { on: { click: () => { res('ocr'); m.close(); } } }, 'Read text (OCR)'));
+      h('button.btn', { on: { click: pick('diagram') } }, 'Place as diagram'),
+      h('button.btn' + (claudeReady ? '' : '.primary'), { on: { click: pick('ocr') } }, 'Read text (on device)'),
+      claudeReady && h('button.btn.primary', { on: { click: pick('claude') } }, 'Read with Claude'));
   });
 }

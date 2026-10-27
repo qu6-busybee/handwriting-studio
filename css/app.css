@@ -271,6 +271,14 @@ textarea { resize: vertical; width: 100%; }
 .al-block.t-definition { border-left-color: #e0a040; }
 .al-block.t-question, .al-block.t-answer { border-left-color: #c4b5e8; }
 .al-block.t-table, .al-block.t-equation, .al-block.t-image { border-left-color: #e79a9a; }
+.al-claude { margin-top: 12px; padding: 10px 12px; background: var(--panel-2); border-radius: 8px; }
+.al-claude h4 { margin-top: 0 !important; }
+.al-claude input[type=password] { width: 100%; margin: 6px 0 2px; font-family: ui-monospace, monospace; }
+.claude-go { background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.al-source { font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
+.al-source.claude { color: var(--accent); }
+ul.choices { padding-left: 18px; margin: 0; }
+ul.choices li { margin: 6px 0; }
 .al-cta { margin: 0 0 6px; background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: 600; }
 
 /* Narrower windows: toolbar buttons collapse to icons (tooltips keep names). */

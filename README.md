@@ -75,7 +75,13 @@ The blue lines, red margin, paper colour and the dashed printable-area box are g
   - Headings stay with what follows, short definitions and lists stay together, and long paragraphs continue across pages.
   - Questions stay with their answers, and answers, list levels and equations are indented.
 - **Result:** everything arrives as plain, editable text for review. Nothing is handwritten until **Generate Handwriting**.
-- **What it is:** the recognition is rule-based and runs entirely in your browser; nothing is sent to an online AI service. OCR quality depends on the image, and photos of handwriting or complex diagrams won't convert to text reliably.
+- **What it is:** by default, recognition is rule-based and runs entirely in your browser; nothing is sent to an online AI service. On-device OCR quality depends on the image, and photos of handwriting or complex diagrams won't convert to text reliably.
+- **Optional Claude recognition (bring your own key):**
+  - Add an Anthropic API key in the Auto-Layout dialog. Then **Recognize with Claude** sends the text, plus images marked **Read with Claude** or placed as diagrams, to Claude Opus 5.5 through the official Anthropic JavaScript SDK (0.133.0, loaded on first use).
+  - Claude returns the structure as JSON (structured outputs). It is told to transcribe exactly and never rewrite, summarise or drop content, and it can mark figures inside images to be placed as pictures.
+  - The result appears in the same review list before anything is placed, along with the token usage and an estimated cost.
+  - Your key stays in your browser: in memory for the session, or in local storage if you tick "Remember on this device". Requests go directly from your browser to `api.anthropic.com`, and usage is billed to your Anthropic account. Server-side refusal fallbacks are enabled, so if a safety classifier declines, another model completes the request.
+  - Use a key with spending limits you're comfortable with. Anyone with access to your browser profile can read a remembered key.
 
 **Handwriting settings** (right panel, per text box or for the whole document)
 - **Live sample:** shows how the settings look as finished handwriting, even while the page is still in editing mode.
