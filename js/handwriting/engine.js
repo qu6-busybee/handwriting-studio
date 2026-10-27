@@ -85,8 +85,11 @@ export function layoutText(obj, { writerSeed, paper, clean = false }) {
   const cursive = !clean && style?.category === 'cursive';
   const manner = MANNERS[hw.manner] || MANNERS.casual;
   const mess = clean ? 0 : clamp((1 - hw.neatness) * 2, 0, 2);
-  const size = Math.max(0.5, hw.size);
-  const ls = hw.lineSpacing > 0 ? hw.lineSpacing : hw.followLines !== false ? paper.spacing : size * 2.7;
+  // Line spacing comes from the paper unless the box overrides it; with
+  // autoSize the letters scale with it (e.g. 8.7 mm → 7.1 mm ruling).
+  const lsBase = hw.lineSpacing > 0 ? hw.lineSpacing : hw.followLines !== false ? paper.spacing : 0;
+  const size = Math.max(0.5, hw.autoSize && lsBase ? lsBase * (hw.sizeRatio || 0.37) : hw.size);
+  const ls = lsBase || size * 2.7;
   const firstBaseline = ls * 0.74;
   const maxW = Math.max(size * 2, obj.w);
   const comp = clean ? 1 : manner.compress;

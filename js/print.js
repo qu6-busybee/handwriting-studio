@@ -1,6 +1,8 @@
 // Printing, printer calibration, PDF/PNG export and project files.
 import { h, svg, uid, download, toast, round, pickFile, readFile, hash, SVG_NS } from './util.js';
-import { paperOverlay, lineYs, PAPER_PRESETS, paperFromPreset, paperLabel, writingBox, allPresets, userPresets, saveUserPreset, deleteUserPreset } from './paper.js';
+import { paperOverlay, lineYs, lineCount, tiltAt, PAPER_PRESETS, applyPreset, paperLabel, writingBox, userPresets, saveUserPreset, deleteUserPreset } from './paper.js';
+import { UNITS } from './ui/controls.js';
+import { commitPaper } from './paperedit.js';
 import { inkDefs, pageContent } from './editor/render.js';
 import { ensureProvider, embedStyles, importStyles } from './handwriting/styles.js';
 import { openModal } from './ui/modal.js';
@@ -91,18 +93,24 @@ async function ensureAllProviders(pages) {
 // Builds a standalone SVG for one page. Printed/exported output is content
 // only: never the paper colour, ruling, margin or holes (withPaper is for
 // on-screen previews). handwriting=true forces generated output.
-function pageSvg(pg, { profile, withPaper = false, corrected = true, handwriting, printable } = {}) {
+export const printMode = () => state.project.print?.mode || 'ink';
+export const PRINT_MODES = [['ink', 'Handwriting only'], ['template', 'Paper template only'], ['both', 'Handwriting + paper']];
+
+function pageSvg(pg, { profile, withPaper = false, corrected = true, handwriting, printable, mode = printMode() } = {}) {
   const paper = state.project.paper;
   const m = profile ? mediaSize(profile, paper) : { w: paper.w, h: paper.h };
   const root = svg('svg', { xmlns: SVG_NS, width: `${m.w}mm`, height: `${m.h}mm`, viewBox: `0 0 ${m.w} ${m.h}` });
   root.append(inkDefs());
   const g = svg('g', { transform: profile ? printMatrix(profile, paper, corrected) : null });
   if (withPaper) g.append(paperOverlay(paper));
+  // Print modes: 'ink' = writing only (default, for real lined paper),
+  // 'template' = lines and margins only, 'both' = lines plus writing.
+  else if (mode !== 'ink') g.append(paperOverlay(paper, { print: true }));
   if (printable) {
     const r = printableRect(printable, paper);
     g.append(svg('rect', { x: r.x, y: r.y, width: r.w, height: r.h, fill: 'none', stroke: '#c07a2c', 'stroke-width': 0.3, 'stroke-dasharray': '2 1.5', opacity: 0.8 }));
   }
-  g.append(pageContent(pg, { project: state.project, editor: false, handwriting }));
+  if (mode !== 'template') g.append(pageContent(pg, { project: state.project, editor: false, handwriting }));
   root.append(g);
   return root;
 }
@@ -190,9 +198,16 @@ function previewFigure(pg, mode, caption, extra = {}) {
 }
 
 const modeSeg = (value, onChange) => seg([['paper', 'A · On notebook paper'], ['ink', 'B · Printer output']], value, onChange);
-const modeHint = (mode) => (mode === 'paper'
-  ? 'The blue lines, red margin and paper colour are shown for alignment only.'
-  : 'Exactly what is sent to the printer: only your writing. No lines, margin or paper colour.');
+const modeHint = (view) => {
+  if (view === 'paper') return 'The blue lines, red margin and paper colour are shown for alignment only.';
+  return {
+    ink: 'Exactly what is sent to the printer: only your writing. No lines, margin or paper colour.',
+    template: 'Exactly what is sent to the printer: only the lines and margins (no writing, no paper colour).',
+    both: 'Exactly what is sent to the printer: your writing plus the lines and margins, for blank paper.',
+  }[printMode()];
+};
+const printModeField = (onChange) => h('label.field', h('span', 'What to print'),
+  seg(PRINT_MODES.map(([k, l]) => [k, l.replace('Paper template only', 'Paper only').replace('Handwriting + paper', 'Both')]), printMode(), (v) => { state.project.print.mode = v; S.commit(); onChange(); }));
 
 const printDialogNote = () => h('div.note', h('strong', 'In the print dialog'),
   h('ul',
@@ -220,20 +235,23 @@ export function openPrintPreview() {
     hint.textContent = modeHint(opts.mode);
     list.replaceChildren(...pages.map((pg, i) => previewFigure(pg, opts.mode, `Page ${(opts.range === 'current' ? state.pageIndex : i) + 1}`, { printable: opts.mode === 'paper' ? activeProfile() : null })));
     const w = [];
-    if (state.project.stage !== 'handwriting') {
+    if (printMode() === 'template') {
+      // Nothing written prints in this mode.
+    } else if (state.project.stage !== 'handwriting') {
       w.push(h('div.note.warn', 'Handwriting hasn’t been generated yet, so text would print in a plain font. ',
         h('button.btn.small.generate', { on: { click: () => { S.generateHandwriting(); draw(); } } }, 'Generate Handwriting')));
     } else if (S.staleCount()) {
       w.push(h('div.note.warn', `${S.staleCount()} text box(es) changed since generation and would print in a plain font. `,
         h('button.btn.small', { on: { click: () => { S.generateHandwriting(); draw(); } } }, 'Regenerate changed')));
     }
-    const clipped = clippedObjects(pages);
+    const clipped = printMode() === 'template' ? [] : clippedObjects(pages);
     if (clipped.length) w.push(h('div.note.warn', `${clipped.length} item(s) reach outside the printable area and may be cut off by the printer.`));
     warnings.replaceChildren(...w);
   };
 
   const side = h('div.preview-side',
     warnings,
+    printModeField(draw),
     h('label.field', h('span', 'Preview'), modeSeg(opts.mode, (v) => { opts.mode = v; draw(); })),
     hint,
     h('label.field', h('span', 'Pages'), seg([['all', 'All pages'], ['current', 'This page']], opts.range, (v) => { opts.range = v; draw(); })),
@@ -260,9 +278,9 @@ function examplePage() {
   const wb = writingBox(p);
   const fb = p.spacing * 0.74;
   const top = (line) => p.firstLine + line * p.spacing - fb;
-  const T = (id, text, x, line, w) => ({ id: 'example-' + id, type: 'text', x, y: top(line), w, h: p.spacing, rot: 0, opacity: 1, text, hw: { ...d, followLines: true, lineSpacing: 0, mistakes: 0, seed: hash('example', id) } });
+  const T = (id, text, x, line, w) => ({ id: 'example-' + id, type: 'text', x, y: top(line) + tiltAt(p, x + w / 2), w, h: p.spacing, rot: p.lineStyle?.angle || 0, opacity: 1, text, hw: { ...d, followLines: true, lineSpacing: 0, mistakes: 0, seed: hash('example', id) } });
   const Sh = (id, shape, x, y, w, hh) => ({ id: 'example-' + id, type: 'shape', shape, x, y, w, h: hh, rot: 0, opacity: 1, stroke: d.color, strokeWidth: d.pen === 'pencil' ? 0.5 : 0.42, fill: 'none', handDrawn: true, pen: d.pen, seed: hash('example', id) });
-  const last = Math.max(13, p.lines - 1);
+  const last = Math.max(13, lineCount(p) - 1);
   const objs = [
     T('title', 'Example print', wb.x, 0, wb.w),
     T('para', 'This short paragraph spans several ruled lines. Check that every baseline sits on a blue line and that each line starts just right of the red margin.', wb.x, 2, wb.w),
@@ -377,9 +395,9 @@ export function openCalibration() {
   const m = openModal('Paper & printer calibration', { wide: true });
   const paper = state.project.paper;
   let prof = { ...activeProfile() };
-  let unit = localStorage.getItem('hws.unit') || 'in';
-  const U = () => (unit === 'in' ? IN : 1);
-  const show = (mm) => round(mm / U(), unit === 'in' ? 4 : 2);
+  let unit = UNITS[localStorage.getItem('hws.unit')] ? localStorage.getItem('hws.unit') : 'in';
+  const U = () => UNITS[unit].k;
+  const show = (mm) => round(mm / U(), unit === 'mm' ? 2 : 4);
 
   const num = (val, on, step) => h('input', { type: 'number', step: step || (unit === 'in' ? 0.01 : 0.1), value: val, on: { change: (e) => on(parseFloat(e.target.value)) } });
 
@@ -389,8 +407,12 @@ export function openCalibration() {
       ...profiles().map((p) => h('option', { value: p.id }, p.name)));
     profSel.value = prof.id;
 
-    const setPaper = (k, v) => { if (!isNaN(v)) { paper[k] = v * (k === 'lines' ? 1 : U()); paper.presetId = 'custom'; S.commit(); render(); } };
-    const preset = h('select', { on: { change: (e) => { if (e.target.value !== 'custom') { Object.assign(paper, paperFromPreset(e.target.value)); S.commit(); render(); } } } },
+    const setPaper = (k, v) => {
+      if (isNaN(v)) return;
+      commitPaper((pp) => { pp[k] = v * (k === 'lines' ? 1 : U()); pp.presetId = 'custom'; if (k === 'lines') pp.autoLines = false; });
+      render();
+    };
+    const preset = h('select', { on: { change: (e) => { if (e.target.value !== 'custom') { commitPaper((pp) => applyPreset(pp, e.target.value)); render(); } } } },
       h('optgroup', { label: 'Standard' }, ...PAPER_PRESETS.map((p) => h('option', { value: p.id }, `${p.name} · ${p.size}`))),
       userPresets().length && h('optgroup', { label: 'Saved' }, ...userPresets().map((p) => h('option', { value: p.id }, `${p.name} · ${p.size}`))),
       h('option', { value: 'custom' }, 'Custom (measured, not saved)'));
@@ -399,12 +421,12 @@ export function openCalibration() {
     const isUser = paper.presetId.startsWith('user-');
 
     // "measure my paper": first and last line + count -> spacing
-    const meas = { first: show(paper.firstLine), last: show(paper.firstLine + (paper.lines - 1) * paper.spacing), count: paper.lines };
+    const meas = { first: show(paper.firstLine), last: show(paper.firstLine + (lineCount(paper) - 1) * paper.spacing), count: lineCount(paper) };
 
     const measured = { ax: '', ay: '', bx: '', by: '' };
 
     body.replaceChildren(
-      h('div.unit-row', h('span', 'Units'), seg([['in', 'inches'], ['mm', 'millimetres']], unit, (v) => { unit = v; localStorage.setItem('hws.unit', v); render(); })),
+      h('div.unit-row', h('span', 'Units'), seg([['in', 'inches'], ['mm', 'millimetres'], ['cm', 'centimetres']], unit, (v) => { unit = v; localStorage.setItem('hws.unit', v); render(); })),
       step(1, 'Your notebook paper', 'Pick the closest type, then correct any measurement with a ruler.',
         h('label.field', h('span', 'Paper type'), preset),
         h('div.grid3',
@@ -413,7 +435,7 @@ export function openCalibration() {
           fld('Line spacing', num(show(paper.spacing), (v) => setPaper('spacing', v), unit === 'in' ? 0.001 : 0.01)),
           fld('Top edge → first line', num(show(paper.firstLine), (v) => setPaper('firstLine', v))),
           fld('Left edge → red margin', num(show(paper.margin), (v) => setPaper('margin', v))),
-          fld('Number of lines', num(paper.lines, (v) => setPaper('lines', Math.round(v)), 1)),
+          fld('Number of lines', num(lineCount(paper), (v) => setPaper('lines', Math.round(v)), 1)),
         ),
         h('div.row',
           presetName,
@@ -434,11 +456,13 @@ export function openCalibration() {
             fld('Lines counted', num(meas.count, (v) => (meas.count = v), 1))),
           h('button.btn.small', { on: { click: () => {
             if (meas.count < 2 || !(meas.last > meas.first)) return toast('Check the measurements');
-            paper.firstLine = meas.first * U();
-            paper.spacing = ((meas.last - meas.first) * U()) / (meas.count - 1);
-            paper.lines = Math.round(meas.count);
-            paper.presetId = 'custom';
-            S.commit();
+            commitPaper((pp) => {
+              pp.firstLine = meas.first * U();
+              pp.spacing = ((meas.last - meas.first) * U()) / (meas.count - 1);
+              pp.lines = Math.round(meas.count);
+              pp.autoLines = false;
+              pp.presetId = 'custom';
+            });
             render();
             toast(`Line spacing set to ${round(paper.spacing, 3)} mm`);
           } } }, 'Use these measurements')),
@@ -564,20 +588,19 @@ export async function openProjectList() {
 
 export function openNewProject() {
   const m = openModal('New project');
-  let preset = state.project?.paper.presetId && state.project.paper.presetId !== 'custom' ? state.project.paper.presetId : 'filler-wide';
-  const keepCustom = state.project?.paper.presetId === 'custom';
-  const opts = h('div.paper-options', ...PAPER_PRESETS.map((p) => h('label.paper-option',
-    h('input', { type: 'radio', name: 'paper', value: p.id, checked: p.id === preset, on: { change: () => (preset = p.id) } }),
-    h('span', h('strong', p.name), h('span.muted', `${p.size} · ${round(p.spacing, 1)} mm lines`)))));
-  if (keepCustom) {
-    opts.prepend(h('label.paper-option', h('input', { type: 'radio', name: 'paper', value: 'custom', checked: true, on: { change: () => (preset = 'custom') } }),
-      h('span', h('strong', 'My measured paper'), h('span.muted', paperLabel(state.project.paper)))));
-    preset = 'custom';
-  }
+  // Default: the same paper (including any custom settings) as this project.
+  let preset = state.project ? 'same' : 'filler-wide';
+  const option = (id, title, sub) => h('label.paper-option',
+    h('input', { type: 'radio', name: 'paper', value: id, checked: id === preset, on: { change: () => (preset = id) } }),
+    h('span', h('strong', title), h('span.muted', sub)));
+  const opts = h('div.paper-options',
+    state.project && option('same', 'Same paper as this project', paperLabel(state.project.paper)),
+    ...PAPER_PRESETS.map((p) => option(p.id, p.name, `${p.size} · ${round(p.spacing, 1)} mm lines`)),
+    ...userPresets().map((p) => option(p.id, p.name, `Saved · ${p.size}`)));
   m.body.append(opts);
   m.foot.append(h('button.btn.primary', { on: { click: () => {
-    const p = S.createProject(preset === 'custom' ? 'filler-wide' : preset);
-    if (preset === 'custom') p.paper = { ...state.project.paper };
+    const p = S.createProject(preset === 'same' ? 'filler-wide' : preset);
+    if (preset === 'same') p.paper = JSON.parse(JSON.stringify(state.project.paper));
     if (state.project) { p.writer = JSON.parse(JSON.stringify(state.project.writer)); }
     S.loadProject(p);
     m.close();

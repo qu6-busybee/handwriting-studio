@@ -40,20 +40,52 @@ export function slider(label, get, { min, max, step = 0.01, unit = '', fmt, onIn
   return el;
 }
 
-// Display unit for lengths: inches or millimetres (stored values are always mm).
-export const getUnit = () => localStorage.getItem('hws.unit') || 'in';
+// Display units for lengths. Stored values are always millimetres.
+export const UNITS = {
+  in: { k: 25.4, dp: 3, step: 0.01, label: 'in' },
+  mm: { k: 1, dp: 2, step: 0.1, label: 'mm' },
+  cm: { k: 10, dp: 3, step: 0.01, label: 'cm' },
+};
+export const getUnit = () => (UNITS[localStorage.getItem('hws.unit')] ? localStorage.getItem('hws.unit') : 'in');
 export const setUnit = (u) => localStorage.setItem('hws.unit', u);
+export const unitInfo = () => UNITS[getUnit()];
+// "0.344 in (8.73 mm)" — the mm value is shown alongside other units.
+export function fmtLen(mm) {
+  const u = getUnit(), I = UNITS[u];
+  const main = `${round(mm / I.k, I.dp)} ${I.label}`;
+  return u === 'mm' ? main : `${main} (${round(mm, 2)} mm)`;
+}
 
 // unit 'mm' marks a length, shown in the user's chosen unit.
 export function numField(label, get, { step = 0.1, unit = 'mm', onChange, disabled }) {
   const len = unit === 'mm';
-  const inch = len && getUnit() === 'in';
-  const k = inch ? 25.4 : 1;
-  const show = () => round(get() / k, inch ? 3 : 1);
-  const inp = h('input.num', { type: 'number', step: inch ? 0.01 : step, value: show(), disabled });
-  inp.addEventListener('change', () => { const v = parseFloat(inp.value); if (!isNaN(v)) onChange(v * k); });
-  const el = h('label.ctl.numf', h('span', label), h('div.numwrap', inp, h('span.unit', inch ? 'in' : unit)));
+  const I = len ? unitInfo() : { k: 1, dp: 1, step, label: unit };
+  const show = () => round(get() / I.k, I.dp);
+  const inp = h('input.num', { type: 'number', step: I.step, value: show(), disabled });
+  inp.addEventListener('change', () => { const v = parseFloat(inp.value); if (!isNaN(v)) onChange(v * I.k); });
+  const el = h('label.ctl.numf', h('span', label), h('div.numwrap', inp, h('span.unit', I.label)));
   reg(el, () => { inp.value = show(); });
+  return el;
+}
+
+// Slider for quick changes plus a typed value for precision, in display units.
+// min/max are millimetres; onInput receives millimetres.
+export function lenSlider(label, get, { min, max, onInput, onCommit, tip }) {
+  const I = unitInfo();
+  const show = (mm) => round(mm / I.k, I.dp);
+  const range = h('input', { type: 'range', min, max, step: (max - min) / 1000, value: get() });
+  const num = h('input.num', { type: 'text', value: show(get()) });
+  range.addEventListener('input', () => { num.value = show(+range.value); onInput(+range.value); });
+  range.addEventListener('change', () => onCommit());
+  num.addEventListener('change', () => {
+    const v = parseFloat(num.value);
+    if (isNaN(v)) { num.value = show(get()); return; }
+    onInput(v * I.k);
+    onCommit();
+    range.value = v * I.k;
+  });
+  const el = h('div.ctl.slider', { title: tip || null }, h('label', label), range, h('div.numwrap.wide', num, h('span.unit', I.label)));
+  reg(el, () => { range.value = get(); num.value = show(get()); });
   return el;
 }
 

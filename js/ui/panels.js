@@ -69,6 +69,20 @@ export function initTopbar() {
     ];
   });
   const linesBtn = tbtn('ruled', 'Show / hide notebook lines (never printed)', () => { state.project.view.overlay = !state.project.view.overlay; S.commit(); });
+  const paperBtn = h('button.text-btn.paper-btn', { title: 'Paper settings: size, lines, margins (edit on the page)', on: { click: () => S.setPaperEdit(!state.paperEdit) } }, icon('grid', 16), 'Paper');
+
+  // Floating bar over the canvas while editing the paper.
+  const paperBar = h('div.paper-bar',
+    h('span', 'Editing paper — drag the first line, spacing line or margin'),
+    tbtn('undo', 'Undo (Ctrl+Z)', S.undo),
+    tbtn('redo', 'Redo (Ctrl+Shift+Z)', S.redo),
+    h('button.btn.small.primary', { on: { click: () => S.setPaperEdit(false) } }, 'Done'));
+  document.getElementById('app').append(paperBar);
+  bus.on('paperEdit', () => {
+    paperBar.classList.toggle('show', state.paperEdit);
+    paperBtn.classList.toggle('on', state.paperEdit);
+    if (state.paperEdit) document.getElementById('app').classList.remove('no-right');
+  });
   const status = h('span.save-status');
   const leftT = tbtn('panel-left', 'Toggle left panel', () => document.getElementById('app').classList.toggle('no-left'));
   const rightT = tbtn('panel-right', 'Toggle properties panel', () => document.getElementById('app').classList.toggle('no-right'));
@@ -96,7 +110,7 @@ export function initTopbar() {
     name, fileBtn,
     h('div.tsep'), undo, redo,
     h('div.tsep'), tbtn('zoom-out', 'Zoom out (Ctrl+−)', () => setZoom(state.zoom / 1.2)), zoomLbl, tbtn('zoom-in', 'Zoom in (Ctrl+=)', () => setZoom(state.zoom * 1.2)), tbtn('fit', 'Fit page (Ctrl+0)', zoomFit),
-    h('div.tsep'), alignBtn, linesBtn,
+    h('div.tsep'), alignBtn, linesBtn, paperBtn,
     h('div.grow'),
     stageBox,
     h('div.grow'),

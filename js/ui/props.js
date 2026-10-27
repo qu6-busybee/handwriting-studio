@@ -1,21 +1,29 @@
 // Right-hand properties panel: shows only what applies to the selection.
 import { h } from '../util.js';
 import * as S from '../state.js';
-import { paperFromPreset, presetOptions, writingBox } from '../paper.js';
+import { presetOptions, writingBox } from '../paper.js';
 import { getUnit, setUnit } from './controls.js';
 import { allStyles } from '../handwriting/styles.js';
 import { section, slider, numField, toggle, select, segmented, colorRow, iconBtn, syncers, syncAll } from './controls.js';
 import { openCalibration } from '../print.js';
 import { aabb, startEditing } from '../editor/canvas.js';
 import { icon } from './icons.js';
+import { paperPanel } from './paperpanel.js';
+import { commitPaper } from '../paperedit.js';
+import { applyPreset } from '../paper.js';
 
 const { state, bus } = S;
 let root;
 
 export function initProps() {
   root = document.getElementById('rightpanel');
-  for (const ev of ['selection', 'page', 'project', 'styles', 'stage', 'editing']) bus.on(ev, build);
-  bus.on('history', () => syncAll());
+  for (const ev of ['selection', 'page', 'project', 'styles', 'stage', 'editing', 'paperEdit']) bus.on(ev, build);
+  bus.on('history', () => {
+    // Paper settings can change shape on undo (e.g. extra lines); rebuild
+    // unless the user is typing in the panel.
+    if (state.paperEdit && !root.contains(document.activeElement)) build();
+    else syncAll();
+  });
   bus.on('live', () => syncAll());
   build();
 }
@@ -37,7 +45,8 @@ function build() {
   syncers.clear();
   const sel = S.selected();
   const body = h('div.props');
-  if (!sel.length) body.append(...pageProps());
+  if (state.paperEdit) body.append(...paperPanel(build));
+  else if (!sel.length) body.append(...pageProps());
   else if (sel.length === 1) body.append(...objectProps(sel[0]));
   else body.append(...multiProps(sel));
   root.replaceChildren(body);
@@ -54,7 +63,10 @@ function hwControls(objs, { full = true } = {}) {
     select('Style', get('style'), styleOptions(), setC('style')),
     segmented('Manner', get('manner'), [['neat', 'Neat'], ['casual', 'Casual'], ['rushed', 'Rushed']], setC('manner')),
     penControls(objs, (k, v) => { objs.forEach((o) => (o.hw[k] = v)); }),
-    slider('Letter size', get('size'), { min: 1.2, max: 9, step: 0.05, unit: 'mm', onInput: set('size'), onCommit: done, tip: 'Height of lowercase letters (x-height)' }),
+    toggle('Size follows lines', () => !!o0.hw.autoSize, (v) => { set('autoSize')(v); done(); build(); }, 'Letters scale with the paper’s line spacing'),
+    o0.hw.autoSize
+      ? slider('Letter height', () => o0.hw.sizeRatio || 0.37, { min: 0.2, max: 0.6, step: 0.01, fmt: (v) => Math.round(v * 100) + '%', onInput: set('sizeRatio'), onCommit: done, tip: 'Lowercase height as a share of the line spacing' })
+      : slider('Letter size', get('size'), { min: 1.2, max: 9, step: 0.05, unit: 'mm', onInput: set('size'), onCommit: done, tip: 'Height of lowercase letters (x-height)' }),
     slider('Neatness', get('neatness'), { min: 0, max: 1, step: 0.01, fmt: (v) => Math.round(v * 100) + '%', onInput: set('neatness'), onCommit: done }),
   );
   if (!full) return out;
@@ -117,28 +129,31 @@ function pageProps() {
   return [
     section('Paper', [
       select('', () => p.paper.presetId, presetOptions(p.paper), (v) => {
-        if (v === 'custom') return;
-        Object.assign(p.paper, paperFromPreset(v));
+        commitPaper((pp) => applyPreset(pp, v));
         d.size = +(p.paper.spacing * 0.37).toFixed(2);
-        done();
+        build();
       }),
-      h('p.muted.small', 'The lines, margin and paper colour are a guide only. Printing outputs just your writing, because your real paper already has the lines.'),
-      toggle('Show notebook lines', () => p.view.overlay, (v) => { p.view.overlay = v; done(); }, 'Never printed'),
+      h('p.muted.small', 'The lines, margin and paper colour are a guide only. By default, printing outputs just your writing, because your real paper already has the lines.'),
+      toggle('Show notebook lines', () => p.view.overlay, (v) => { p.view.overlay = v; done(); }, 'Never printed in “Handwriting only” mode'),
       toggle('Show printable area', () => p.view.printable !== false, (v) => { p.view.printable = v; done(); }, 'Dashed box: your printer can’t print outside it'),
       toggle('Snap text to lines', () => p.view.snapLines !== false, (v) => { p.view.snapLines = v; done(); }),
-      segmented('Units', getUnit, [['in', 'Inches'], ['mm', 'Millimetres']], (v) => { setUnit(v); build(); }),
-      h('button.btn.block', { on: { click: openCalibration } }, 'Measure paper & calibrate printer…'),
+      segmented('Units', getUnit, [['in', 'in'], ['mm', 'mm'], ['cm', 'cm']], (v) => { setUnit(v); build(); }),
+      h('div.btn-row',
+        h('button.btn', { on: { click: () => S.setPaperEdit(true) } }, 'Paper settings…'),
+        h('button.btn', { on: { click: openCalibration } }, 'Calibrate printer…')),
     ]),
     section('Writer', [
       h('p.muted.small', 'New text uses these settings. Every page shares one writer identity, so letters keep the same habits throughout.'),
       select('Default style', () => d.style, styleOptions(), (v) => { d.style = v; done(); }),
       segmented('Manner', () => d.manner, [['neat', 'Neat'], ['casual', 'Casual'], ['rushed', 'Rushed']], (v) => { d.manner = v; done(); }),
-      slider('Letter size', () => d.size, { min: 1.2, max: 9, step: 0.05, unit: 'mm', onInput: setD('size'), onCommit: done }),
+      d.autoSize
+        ? slider('Letter height', () => d.sizeRatio || 0.37, { min: 0.2, max: 0.6, step: 0.01, fmt: (v) => Math.round(v * 100) + '%', onInput: setD('sizeRatio'), onCommit: done, tip: 'Share of the line spacing (set in Paper settings → Alignment)' })
+        : slider('Letter size', () => d.size, { min: 1.2, max: 9, step: 0.05, unit: 'mm', onInput: setD('size'), onCommit: done }),
       penControls([{ hw: d }], (k, v) => { d[k] = v; }),
       slider('Neatness', () => d.neatness, { min: 0, max: 1, step: 0.01, fmt: (v) => Math.round(v * 100) + '%', onInput: setD('neatness'), onCommit: done }),
       h('div.btn-row',
         h('button.btn', { title: 'Apply style, manner, size, ink and neatness to every text box', on: { click: () => {
-          for (const pg of p.pages) for (const o of pg.objects) if (o.type === 'text') Object.assign(o.hw, { style: d.style, manner: d.manner, size: d.size, pen: d.pen, color: d.color, neatness: d.neatness });
+          for (const pg of p.pages) for (const o of pg.objects) if (o.type === 'text') Object.assign(o.hw, { style: d.style, manner: d.manner, size: d.size, autoSize: !!d.autoSize, sizeRatio: d.sizeRatio || 0.37, pen: d.pen, color: d.color, neatness: d.neatness });
           done();
         } } }, 'Apply to all text'),
         h('button.btn', { title: 'A different person: changes everyone’s letter habits and slant', on: { click: () => { p.writer.seed = (Math.random() * 1e9) | 0; done(); } } }, 'New writer')),

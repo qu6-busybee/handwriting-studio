@@ -1,10 +1,12 @@
 // The editing surface: page SVG, selection handles, pointer tools, snapping,
 // zoom, inline text editing and keyboard shortcuts.
 import { svg, h, PX_PER_MM, clamp, simplify, uid, isTyping, toast } from '../util.js';
-import { paperOverlay, nearestLineY, writingBox } from '../paper.js';
+import { paperOverlay, nearestLineY, writingBox, lineYs, tiltAt } from '../paper.js';
 import { inkDefs, objectElement, objTransform, pageContent } from './render.js';
 import * as S from '../state.js';
 import { printableRect, activeProfile } from '../print.js';
+import { livePaper, commitPaper } from '../paperedit.js';
+import { getUnit, fmtLen } from '../ui/controls.js';
 
 const { state, bus } = S;
 let ws, stage, wrap, pageSvg, contentG, uiG, editor;
@@ -29,7 +31,12 @@ export function initCanvas() {
   bus.on('fonts', renderAll);
   bus.on('stage', renderAll);
   bus.on('selection', () => { drawUI(); });
-  bus.on('zoom', () => { sizePage(); drawUI(); positionEditor(); });
+  bus.on('zoom', () => { sizePage(); drawUI(); drawRulers(); positionEditor(); });
+  bus.on('paperEdit', () => {
+    if (state.paperEdit && state.editingId) commitEditor();
+    ws.classList.toggle('paper-edit', state.paperEdit);
+    renderAll();
+  });
   bus.on('tool', () => { ws.dataset.tool = state.tool; });
 
   pageSvg.addEventListener('pointerdown', onDown);
@@ -68,7 +75,12 @@ export function renderAll() {
   pageSvg.replaceChildren();
   pageSvg.append(inkDefs());
   // The overlay toggle hides only the ruling; a plain sheet stays for contrast.
-  pageSvg.append(state.project.view.overlay ? paperOverlay(p) : svg('rect', { width: p.w, height: p.h, fill: '#fdfdfb' }));
+  // Lines are always shown while editing the paper itself.
+  pageSvg.append(state.project.view.overlay || state.paperEdit ? paperOverlay(p) : svg('rect', { width: p.w, height: p.h, fill: p.bg || '#fdfdfb' }));
+  if (state.paperEdit) {
+    const wb = writingBox(p), m = p.margins;
+    pageSvg.append(svg('rect', { class: 'margin-box', x: wb.x, y: m.top, width: wb.w, height: p.h - m.top - m.bottom }));
+  }
   if (state.project.view.printable !== false) {
     // Non-printing guide: the printer can't reach outside this box.
     const r = printableRect(activeProfile(), p);
@@ -79,7 +91,108 @@ export function renderAll() {
   uiG = svg('g', { class: 'ui' });
   pageSvg.append(uiG);
   drawUI();
+  drawRulers();
   positionEditor();
+}
+
+// ---------- Edit Paper mode ----------
+// Rulers in real units along the top and left edges of the sheet.
+function drawRulers() {
+  wrap?.querySelectorAll('.ruler').forEach((e) => e.remove());
+  if (!state.paperEdit || !state.project) return;
+  const p = paper(), k = scale(), u = getUnit();
+  const minor = u === 'in' ? 25.4 / 16 : 1; // mm per minor tick
+  const per = u === 'in' ? 16 : 10; // minor ticks per labelled tick
+  const half = per / 2;
+  const make = (len, horiz) => {
+    const L = len * k;
+    const s = svg('svg', { class: 'ruler ' + (horiz ? 'top' : 'left'), width: horiz ? L : 20, height: horiz ? 20 : L });
+    let d = '';
+    const dense = minor * k < 4;
+    for (let i = 0; i * minor <= len + 1e-6; i++) {
+      const major = i % per === 0, mid = i % half === 0;
+      if (dense && !major && !mid && i % 2) continue;
+      const t = major ? 11 : mid ? 7 : 4;
+      const pos = (i * minor * k).toFixed(1);
+      d += horiz ? `M${pos} 20v${-t}` : `M20 ${pos}h${-t}`;
+      if (major && i) {
+        const v = u === 'in' ? i / per : u === 'cm' ? i / per : i;
+        const tx = svg('text', horiz ? { x: +pos + 2, y: 9 } : { x: 2, y: +pos - 2 });
+        tx.textContent = String(v);
+        s.append(tx);
+      }
+    }
+    s.prepend(svg('path', { d }));
+    return s;
+  };
+  wrap.append(make(p.w, true), make(p.h, false));
+}
+
+let measureEl;
+function showMeasure(e, text) {
+  measureEl ||= document.body.appendChild(h('div.measure'));
+  measureEl.textContent = text;
+  Object.assign(measureEl.style, { left: e.clientX + 14 + 'px', top: e.clientY + 14 + 'px', display: 'block' });
+}
+const hideMeasure = () => measureEl && (measureEl.style.display = 'none');
+
+// Handles: drag the first line, the line-spacing handle, the red margin and
+// any extra vertical lines. Wide invisible strokes make them easy to grab.
+function drawPaperHandles() {
+  const p = paper(), k = 1 / scale();
+  const ys = lineYs(p);
+  const grab = (attrs, name) => uiG.append(svg('line', { ...attrs, class: 'p-hit', 'data-handle': name, 'stroke-width': 10 * k, style: `cursor:${attrs.x1 === attrs.x2 ? 'ew' : 'ns'}-resize` }));
+  const chip = (x, y, text, cls, name) => {
+    const g = svg('g', { class: 'p-chip ' + cls, 'data-handle': name, transform: `translate(${x} ${y}) scale(${k})` });
+    g.append(svg('rect', { x: 0, y: -9, width: text.length * 6.2 + 12, height: 18, rx: 9 }));
+    const t = svg('text', { x: 6, y: 4 });
+    t.textContent = text;
+    g.append(t);
+    uiG.append(g);
+  };
+  const lx1 = p.lineStyle.start || 0, lx2 = p.lineStyle.end ?? p.w;
+  if (ys.length) {
+    const y0 = ys[0];
+    grab({ x1: lx1, x2: lx2, y1: y0 + tiltAt(p, lx1), y2: y0 + tiltAt(p, lx2) }, 'p-first');
+    uiG.append(svg('line', { class: 'p-hl first', x1: lx1, x2: lx2, y1: y0 + tiltAt(p, lx1), y2: y0 + tiltAt(p, lx2), 'stroke-width': 1.5 * k }));
+    chip(p.w - 70 * k, y0 + tiltAt(p, p.w - 40 * k), 'First line', 'first', 'p-first');
+  }
+  const ki = Math.min(ys.length - 1, 5);
+  if (ki >= 1) {
+    const yk = ys[ki];
+    grab({ x1: lx1, x2: lx2, y1: yk + tiltAt(p, lx1), y2: yk + tiltAt(p, lx2) }, 'p-spacing');
+    uiG.append(svg('line', { class: 'p-hl spacing', x1: lx1, x2: lx2, y1: yk + tiltAt(p, lx1), y2: yk + tiltAt(p, lx2), 'stroke-width': 1.5 * k }));
+    chip(p.w - 70 * k, yk + tiltAt(p, p.w - 40 * k), 'Spacing', 'spacing', 'p-spacing');
+  }
+  const vgrab = (x, name, label) => {
+    grab({ x1: x, x2: x, y1: 0, y2: p.h }, name);
+    chip(x + 3 * k, 14 * k + (name === 'p-margin' ? 0 : 22 * k), label, 'margin', name);
+  };
+  if (p.marginStyle.show) vgrab(p.margin, 'p-margin', 'Margin');
+  p.extraMargins.forEach((e, i) => vgrab(e.x, 'p-extra-' + i, `Line ${i + 2}`));
+}
+
+function paperDrag(d, pt, e) {
+  const p = paper();
+  const snap = (v) => (e.shiftKey ? v : Math.round(v * 20) / 20); // 0.05 mm steps
+  if (d.handle === 'p-first') {
+    const v = snap(clamp(pt.y - tiltAt(p, pt.x), 0, p.h));
+    livePaper((pp) => { pp.firstLine = v; });
+    showMeasure(e, `First line: ${fmtLen(v)} from top`);
+  } else if (d.handle === 'p-spacing') {
+    const v = snap(clamp((pt.y - tiltAt(p, pt.x) - p.firstLine) / d.k, 2, 40));
+    livePaper((pp) => { pp.spacing = v; });
+    showMeasure(e, `Line spacing: ${fmtLen(v)}`);
+  } else if (d.handle === 'p-margin') {
+    const v = snap(clamp(pt.x, 0, p.w));
+    livePaper((pp) => { pp.margin = v; });
+    showMeasure(e, `Margin: ${fmtLen(v)} from left`);
+  } else if (d.handle.startsWith('p-extra-')) {
+    const i = +d.handle.slice(8);
+    const v = snap(clamp(pt.x, 0, p.w));
+    livePaper((pp) => { pp.extraMargins[i].x = v; });
+    showMeasure(e, `Vertical line: ${fmtLen(v)} from left`);
+  }
 }
 
 const elOf = (id) => contentG?.querySelector(`[data-id="${id}"]`);
@@ -127,6 +240,7 @@ function toScreen(x, y) {
 function drawUI() {
   if (!uiG) return;
   uiG.replaceChildren();
+  if (state.paperEdit) return drawPaperHandles();
   const k = 1 / scale();
   for (const gl of guides) {
     uiG.append(svg('line', gl.axis === 'x' ? { x1: gl.v, x2: gl.v, y1: 0, y2: paper().h } : { y1: gl.v, y2: gl.v, x1: 0, x2: paper().w }, ));
@@ -175,6 +289,16 @@ function onDown(e) {
   const p = toPage(e);
   const tool = state.tool;
 
+  if (state.paperEdit) {
+    // Content is locked while the paper is being edited.
+    const ph = e.target.closest('[data-handle]')?.dataset.handle;
+    if (ph?.startsWith('p-')) {
+      drag = { type: 'paper', handle: ph, k: Math.min(lineYs(paper()).length - 1, 5) };
+      e.preventDefault();
+    }
+    return;
+  }
+
   if (tool === 'pen' || tool === 'highlighter') {
     drag = { type: 'draw', pts: [[p.x, p.y]], el: svg('path', { class: 'draft', fill: 'none', stroke: tool === 'highlighter' ? '#f2df3c' : state.project.writer.defaults.color, 'stroke-width': tool === 'highlighter' ? 4.5 : 0.45, 'stroke-opacity': tool === 'highlighter' ? 0.4 : 1, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }) };
     uiG.append(drag.el);
@@ -221,6 +345,7 @@ function onMove(e) {
     return;
   }
   const p = toPage(e);
+  if (drag.type === 'paper') return paperDrag(drag, p, e);
   const dx = p.x - drag.start?.x, dy = p.y - drag.start?.y;
   if (drag.type === 'draw') {
     const last = drag.pts[drag.pts.length - 1];
@@ -271,6 +396,10 @@ function onUp(e) {
   const d = drag;
   drag = null;
   guides = [];
+  if (d.type === 'paper') {
+    hideMeasure();
+    return commitPaper();
+  }
   ws.classList.remove('panning');
   if (d.type === 'draw') return finishDraw(d);
   if (d.type === 'create') return finishCreate(d, e);
@@ -284,7 +413,13 @@ function onUp(e) {
 function snapTargets(excludeIds) {
   const p = paper();
   const wb = writingBox(p);
-  const xs = [0, p.w / 2, p.w, p.margin, wb.x, wb.x + wb.w];
+  const xs = [0, p.w / 2, p.w];
+  // The red margin and writing margins are optional snapping boundaries.
+  if (state.project.view.snapMargin !== false) {
+    xs.push(wb.x, wb.x + wb.w);
+    if (p.marginStyle?.show !== false) xs.push(p.margin);
+    for (const e of p.extraMargins || []) xs.push(e.x);
+  }
   const ys = [0, p.h / 2, p.h];
   for (const o of S.page().objects) {
     if (excludeIds.has(o.id) || o.hidden) continue;
@@ -307,12 +442,15 @@ function snapMove(d, dx, dy, disable) {
     for (const t of xs) if (Math.abs(t - v) < tol && (!bestX || Math.abs(t - v) < Math.abs(bestX.d))) bestX = { d: t - v, v: t };
   }
   // Text that follows the ruling locks its first baseline to a ruled line.
-  const lead = d.objs.find((o) => o.type === 'text' && o.hw.followLines !== false && !o.rot);
+  // (Hold Alt while dragging to place text freely.)
+  const angle = paper().lineStyle?.angle || 0;
+  const lead = d.objs.find((o) => o.type === 'text' && o.hw.followLines !== false && Math.abs((o.rot || 0) - angle) < 0.01);
   if (lead && state.project.view.snapLines !== false) {
     const i = d.objs.indexOf(lead);
     const fb = (lead.hw.lineSpacing > 0 ? lead.hw.lineSpacing : paper().spacing) * 0.74;
     const base = d.orig[i].y + dy + fb;
-    bestY = { d: nearestLineY(paper(), base) - base, v: null };
+    const cx = d.orig[i].x + dx + lead.w / 2;
+    bestY = { d: nearestLineY(paper(), base, cx) - base, v: null };
   } else {
     for (const v of [b.y, b.y + b.h / 2, b.y + b.h]) {
       for (const t of ys) if (Math.abs(t - v) < tol && (!bestY || Math.abs(t - v) < Math.abs(bestY.d))) bestY = { d: t - v, v: t };
@@ -367,7 +505,11 @@ function doResize(p, keepAspect) {
       const ncx2 = nx0 + (ocx - box.x) * sx, ncy2 = ny0 + (ocy - box.y) * sy;
       o.w = Math.max(minS, o0.w * sx);
       if (o.type === 'text') {
-        if (handle.length === 2) o.hw.size = Math.max(0.8, o0.hw.size * Math.sqrt(sx * sy));
+        if (handle.length === 2) {
+          const k = Math.sqrt(sx * sy);
+          o.hw.size = Math.max(0.8, o0.hw.size * k);
+          o.hw.sizeRatio = (o0.hw.sizeRatio || 0.37) * k;
+        }
       } else o.h = Math.max(minS, o0.h * sy);
       o.x = ncx2 - o.w / 2;
       o.y = ncy2 - (o.type === 'text' ? o0.h * sy : o.h) / 2;
@@ -455,11 +597,11 @@ export function insertItem(kind, pos) {
     const o = S.newTextObject();
     const fb = p.spacing * 0.74;
     if (kind === 'text-word') { o.w = 40; o.text = 'word'; }
-    if (kind === 'text-heading') { o.text = 'Title'; o.hw.size = +(o.hw.size * 1.35).toFixed(2); o.w = 90; }
+    if (kind === 'text-heading') { o.text = 'Title'; o.hw.sizeRatio = +((o.hw.sizeRatio || 0.37) * 1.3).toFixed(3); o.hw.size = +(o.hw.size * 1.3).toFixed(2); o.w = 90; }
     if (pos) o.x = clamp(pos.x - (kind === 'text' ? 0 : o.w / 2), 0, p.w - 10);
     else if (kind !== 'text') o.x = p.w / 2 - o.w / 2;
     o.y = nearestLineY(p, pos ? pos.y : p.firstLine + p.spacing * 2) - fb;
-    if (kind === 'text') o.w = Math.min(o.w, p.w - o.x - p.rightLimit);
+    if (kind === 'text') o.w = Math.min(o.w, p.w - o.x - p.margins.right);
     S.addObjects([o]);
     if (kind === 'text') startEditing(o.id);
     return;
@@ -623,7 +765,13 @@ function onKey(e) {
   if (mod && k === 's') { e.preventDefault(); S.saveNow(); toast('Saved in this browser'); return; }
   if (mod) return;
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); S.deleteSelected(); return; }
-  if (e.key === 'Escape') { S.setSelection([]); S.setTool('select'); return; }
+  if (e.key === 'Escape') {
+    if (state.paperEdit) return S.setPaperEdit(false);
+    S.setSelection([]);
+    S.setTool('select');
+    return;
+  }
+  if (state.paperEdit) return; // only undo/redo/zoom while editing paper
   if (e.key === 'Enter' || e.key === 'F2') {
     const o = S.selectedOne();
     if (o?.type === 'text') { e.preventDefault(); startEditing(o.id); }

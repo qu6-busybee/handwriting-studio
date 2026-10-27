@@ -149,6 +149,39 @@ textarea { resize: vertical; width: 100%; }
 .printable-area { fill: none; stroke: #c9883a; stroke-width: 0.25; stroke-dasharray: 2 1.5; opacity: 0.55; pointer-events: none; }
 .stale-box { fill: rgba(240, 170, 60, 0.06); stroke: #e0a040; stroke-width: 0.3; stroke-dasharray: 1.5 1; pointer-events: none; }
 
+/* ---------- Edit Paper mode ---------- */
+.paper-edit .content { opacity: 0.35; pointer-events: none; }
+.margin-box { fill: none; stroke: #8a93a3; stroke-width: 0.2; stroke-dasharray: 0.6 1; opacity: 0.8; pointer-events: none; }
+.ruler { position: absolute; background: var(--panel); color: var(--muted); }
+.ruler path { stroke: #7c808a; stroke-width: 1; fill: none; shape-rendering: crispEdges; }
+.ruler text { fill: #a3a7b0; font: 9px var(--font); }
+.ruler.top { top: -22px; left: 0; border-bottom: 1px solid var(--line); }
+.ruler.left { left: -22px; top: 0; border-right: 1px solid var(--line); }
+.ui .p-hit { stroke: transparent; cursor: ns-resize; pointer-events: stroke; }
+.ui line.p-hit[x1] { cursor: ns-resize; }
+.ui .p-hl { pointer-events: none; }
+.ui .p-hl.first { stroke: var(--accent); }
+.ui .p-hl.spacing { stroke: #e0a040; stroke-dasharray: 4 3; }
+.ui .p-chip { cursor: grab; }
+.ui .p-chip rect { fill: #2b2c31; stroke: var(--accent); stroke-width: 1; }
+.ui .p-chip.spacing rect { stroke: #e0a040; }
+.ui .p-chip.margin rect { stroke: #e79a9a; }
+.ui .p-chip text { fill: #e7e8ea; font: 600 10.5px var(--font); }
+.measure { position: fixed; z-index: 80; display: none; background: #111214; color: #fff; border: 1px solid var(--accent); border-radius: 6px; padding: 4px 8px; font: 12px var(--font); font-variant-numeric: tabular-nums; pointer-events: none; }
+.paper-bar { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 25; display: none; align-items: center; gap: 4px; background: var(--panel-2); border: 1px solid var(--accent); border-radius: 8px; padding: 4px 6px 4px 12px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4); font-size: 12px; }
+.paper-bar.show { display: flex; }
+.paper-bar span { color: var(--muted); margin-right: 6px; }
+.paper-btn { display: inline-flex; align-items: center; gap: 6px; }
+.paper-btn.on { color: var(--accent); background: var(--accent-weak); }
+.panel-head { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 4px; }
+.panel-head h3 { margin: 0; font-size: 14px; }
+.props h5 { margin: 12px 0 2px; font-size: 11.5px; font-weight: 600; color: var(--text); }
+.numwrap.wide input.num { width: 52px; }
+.extra-line { display: flex; align-items: center; gap: 4px; }
+.extra-line .ctl { flex: 1; }
+.row.tight { margin-top: 4px; gap: 6px; flex-wrap: nowrap; }
+.row.tight input { flex: 1; }
+
 /* ---------- two-stage workflow ---------- */
 .stage-box { display: flex; align-items: center; gap: 6px; }
 .stage-chip { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); }

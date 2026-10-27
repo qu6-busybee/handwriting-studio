@@ -1,6 +1,6 @@
 // Project model, selection, undo/redo history and autosave.
 import { Emitter, uid, debounce } from './util.js';
-import { paperFromPreset, writingBox } from './paper.js';
+import { paperFromPreset, writingBox, normalizePaper } from './paper.js';
 import * as store from './store.js';
 
 export const bus = new Emitter();
@@ -22,7 +22,9 @@ export const DEFAULT_HW = {
   style: 'nanum',
   pen: 'ballpoint', // ballpoint | gel | pencil
   manner: 'casual',
-  size: 3.2, // x-height in mm
+  size: 3.2, // x-height in mm (used when autoSize is off)
+  autoSize: true, // size follows the line spacing of the paper
+  sizeRatio: 0.37, // x-height as a fraction of the line spacing
   color: INKS[0].color,
   neatness: 0.55,
   slant: 0,
@@ -47,7 +49,15 @@ export const state = {
   tool: 'select',
   editingId: null,
   saveStatus: 'saved',
+  paperEdit: false, // "Edit Paper" mode: rulers, paper handles, paper settings panel
 };
+
+export function setPaperEdit(on) {
+  state.paperEdit = on;
+  if (on) state.selection = new Set();
+  bus.emit('paperEdit');
+  bus.emit('selection');
+}
 
 const randSeed = () => (Math.random() * 1e9) | 0;
 
@@ -65,6 +75,7 @@ export function createProject(presetId = 'filler-wide') {
     assets: {},
     view: { overlay: true, printable: true },
     stage: 'edit', // 'edit' = clean typed layout, 'handwriting' = generated
+    print: { mode: 'ink' }, // 'ink' | 'template' | 'both'
   };
 }
 
@@ -153,7 +164,7 @@ export function setTool(t) {
 // ---------- history ----------
 let past = [];
 let future = [];
-const snap = () => JSON.stringify({ name: state.project.name, paper: state.project.paper, pages: state.project.pages, writer: state.project.writer, view: state.project.view, stage: state.project.stage });
+const snap = () => JSON.stringify({ name: state.project.name, paper: state.project.paper, pages: state.project.pages, writer: state.project.writer, view: state.project.view, stage: state.project.stage, print: state.project.print });
 
 export function resetHistory() {
   past = [snap()];
@@ -227,6 +238,8 @@ export function loadProject(p) {
   if (p.view.printable == null) p.view.printable = true;
   p.assets ||= {};
   p.stage ||= 'edit';
+  p.print ||= { mode: 'ink' };
+  normalizePaper(p.paper);
   resetHistory();
   bus.emit('project');
   bus.emit('change');
@@ -247,7 +260,7 @@ export function newTextObject(props = {}) {
     y: p.paper.firstLine,
     w: wb.w,
     h: p.paper.spacing,
-    rot: 0,
+    rot: p.paper.lineStyle?.angle || 0, // follow slightly tilted ruling
     opacity: 1,
     text: '',
     hw: { ...p.writer.defaults, seed: randSeed() },

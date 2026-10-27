@@ -66,7 +66,18 @@ The blue lines, red margin, paper colour and the dashed printable-area box are g
 
 **Paper, printing and export**
 - Presets for wide, college and narrow ruling (8 × 10½ in filler and Letter), A4 8 mm and 7 mm, and A5. Every measurement is editable, and a measure-across-many-lines helper sets precise spacing (see [docs/PAPER.md](docs/PAPER.md)).
-- The notebook overlay is visual only and is never printed or exported.
+- **Paper settings and Edit Paper mode** (the **Paper** button in the toolbar):
+  - **Size:** width and height in in, mm or cm; portrait or landscape; top, bottom, left and right writing margins; on-screen paper colour; the printer-safe edge.
+  - **Horizontal lines:** spacing (slider or exact value), first-line position, line count (automatic or manual), thickness, colour, opacity, start and end positions, and a small angle for slightly crooked paper.
+  - **Red margin:** position, thickness, colour, opacity, start and end, show or hide, plus any number of extra vertical lines.
+  - **On the canvas:** rulers in real units, and drag the first line, the spacing line, the margin or extra lines while a live measurement shows. Shift gives finer steps. Undo/redo, reset to preset and save preset work throughout.
+  - **Storage:** settings are saved per project, and paper presets are reusable across projects. Printer calibration stays independent of the paper settings.
+- **Alignment:**
+  - Text sitting on a ruled line keeps its line number when the spacing or first line changes, and text at the margins follows them.
+  - With "Size follows lines" on, handwriting scales with the line spacing (e.g. 8.7 mm → 7.1 mm).
+  - The margins are optional snapping edges. Hold Alt while dragging, or turn off "Sit on ruled lines", to place text freely.
+- **Print modes:** *Handwriting only* (the default, for real lined paper), *Paper template only* (lines and margins on blank paper) and *Handwriting + paper*. Previews, printing and PDF/PNG exports all follow the selected mode. The paper colour and punch holes are never printed.
+- The notebook overlay is visual only and is never printed or exported in "Handwriting only" mode.
 - **Your own paper presets:** measured paper can be saved as a preset (stored in the browser).
 - **Printable area:** a dashed box shows where your printer can reach, based on its unprintable edge and how the sheet is fed. The print preview warns about items that would be clipped.
 - **Units:** inches or millimetres in the properties panel and the calibration dialog.
