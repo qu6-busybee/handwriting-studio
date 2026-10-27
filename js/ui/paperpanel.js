@@ -57,10 +57,12 @@ export function paperSections(t, { open = {} } = {}) {
       h('h5', 'Margins'),
       h('div.grid2',
         field('Top', () => p.margins.top, (pp, v) => { pp.margins.top = Math.max(0, v); }),
-        field('Bottom', () => p.margins.bottom, (pp, v) => { pp.margins.bottom = Math.max(0, v); }),
-        field('Left', () => p.margins.left, (pp, v) => { pp.margins.left = Math.max(0, v); pp.margins.linkLeft = false; }, { disabled: p.margins.linkLeft }),
-        field('Right', () => p.margins.right, (pp, v) => { pp.margins.right = Math.max(0, v); })),
-      toggle('Left margin follows the red line', () => p.margins.linkLeft, (v) => { t.commit((pp) => { pp.margins.linkLeft = v; }); t.rebuild(); }),
+        field('Bottom', () => p.margins.bottom, (pp, v) => { pp.margins.bottom = Math.max(0, v); })),
+      // Both red lines: type exact values (fractions work) or drag them on the paper.
+      h('div.margin-fields',
+        field('Red Line Margin', () => p.margin, (pp, v) => { pp.margin = Math.max(0, Math.min(pp.w, v)); pp.marginStyle.show = true; custom(pp); }, { tip: 'Left red line, measured from the left edge' }),
+        field('Right-Side Red Line Margin', () => p.rightLine.x, (pp, v) => { pp.rightLine.x = Math.max(0, Math.min(pp.w, v)); pp.rightLine.show = true; }, { tip: 'Faint red line showing through from the back, measured from the right edge' })),
+      h('p.muted.small', 'Left line from the left edge; right-side line from the right edge.'),
       color('Paper colour', () => p.bg, (pp, v) => { pp.bg = v; }, BG_COLORS),
       h('p.muted.small', 'On screen only — never printed.'),
     ], { collapsible: true, open: open.size ?? true }),
@@ -113,20 +115,33 @@ export function paperSections(t, { open = {} } = {}) {
         h('button.btn.small.ghost', { on: { click: () => { t.commit((pp) => { pp.lineOverrides = {}; }); t.rebuild(); } } }, `Reset all (${adjusted.length})`)),
     ].filter(Boolean), { collapsible: true, open: open.individual ?? false }),
 
-    section('Red margin', [
-      toggle('Show red margin', () => p.marginStyle.show, (v) => { t.commit((pp) => { pp.marginStyle.show = v; }); t.rebuild(); }),
-      len('From left edge', () => p.margin, (pp, v) => { pp.margin = Math.max(0, v); custom(pp); }, 0, p.w / 2),
+    section('Red lines', [
+      h('h5', 'Red Line Margin (left)'),
+      toggle('Show', () => p.marginStyle.show, (v) => { t.commit((pp) => { pp.marginStyle.show = v; }); t.rebuild(); }),
+      len('Red Line Margin', () => p.margin, (pp, v) => { pp.margin = Math.max(0, v); custom(pp); }, 0, p.w / 2, 'From the left edge'),
       slider('Thickness', () => p.marginStyle.width, { min: 0.05, max: 1.2, step: 0.01, unit: 'mm', onInput: live((pp, v) => { pp.marginStyle.width = v; }), onCommit: done }),
       color('Colour', () => p.marginStyle.color, (pp, v) => { pp.marginStyle.color = v; }, MARGIN_COLORS),
       opacity(() => p.marginStyle.opacity, (pp, v) => { pp.marginStyle.opacity = v; }),
-      len('Starts at', () => p.marginStyle.start || 0, (pp, v) => { pp.marginStyle.start = Math.max(0, v); }, 0, p.h / 2, 'From the top edge'),
-      len('Ends at', () => p.marginStyle.end ?? p.h, (pp, v) => { pp.marginStyle.end = Math.min(pp.h, v); }, p.h / 2, p.h, 'From the top edge'),
+      len('Starts at', () => p.marginStyle.start || 0, (pp, v) => { pp.marginStyle.start = Math.max(0, v); }, 0, p.h / 2, 'From the top edge (both red lines)'),
+      len('Ends at', () => p.marginStyle.end ?? p.h, (pp, v) => { pp.marginStyle.end = Math.min(pp.h, v); }, p.h / 2, p.h, 'From the top edge (both red lines)'),
+
+      h('h5', 'Right-Side Red Line Margin'),
+      h('p.muted.small', 'The red line printed on the back of the sheet, showing faintly through the front.'),
+      toggle('Show', () => p.rightLine.show, (v) => { t.commit((pp) => { pp.rightLine.show = v; }); t.rebuild(); }),
+      len('Right-Side Red Line Margin', () => p.rightLine.x, (pp, v) => { pp.rightLine.x = Math.max(0, Math.min(pp.w, v)); }, 0, p.w / 2, 'From the right edge'),
+      slider('Thickness', () => p.rightLine.width, { min: 0.05, max: 1.2, step: 0.01, unit: 'mm', onInput: live((pp, v) => { pp.rightLine.width = v; }), onCommit: done }),
+      color('Colour', () => p.rightLine.color, (pp, v) => { pp.rightLine.color = v; }, MARGIN_COLORS),
+      opacity(() => p.rightLine.opacity, (pp, v) => { pp.rightLine.opacity = v; }),
+      toggle('Stop handwriting at this line', () => p.rightLine.wrap, (v) => { t.commit((pp) => { pp.rightLine.wrap = v; }); t.rebuild(); }, 'Text boxes that reach the right side wrap here instead of at the paper edge'),
+      !(p.rightLine.show && p.rightLine.wrap) && field('Writing stops at', () => p.margins.freeRight, (pp, v) => { pp.margins.freeRight = Math.max(0, v); }, { tip: 'Distance from the right edge' }),
+      h('p.muted.small', 'Both red lines are guides only. They never print in “Handwriting only” mode.'),
+
       h('h5', 'Extra vertical lines'),
       ...p.extraMargins.map((e, i) => h('div.extra-line',
         len(`Line ${i + 2}`, () => e.x, (pp, v) => { pp.extraMargins[i].x = Math.max(0, Math.min(pp.w, v)); }, 0, p.w),
         h('button.icon-btn.tiny', { title: 'Remove', on: { click: () => { t.commit((pp) => pp.extraMargins.splice(i, 1)); t.rebuild(); } } }, '✕'))),
       h('button.btn.small', { on: { click: () => { t.commit((pp) => pp.extraMargins.push({ x: Math.min(pp.w - 10, pp.margin + 6), color: pp.marginStyle.color, width: pp.marginStyle.width, opacity: pp.marginStyle.opacity })); t.rebuild(); } } }, '+ Add vertical line'),
-    ], { collapsible: true, open: open.margin ?? false }),
+    ].filter(Boolean), { collapsible: true, open: open.margin ?? false }),
   ];
 }
 

@@ -214,8 +214,9 @@ export function openPaperStudio({ paper, name = 'My paper', editingId = null, fo
         row('Number of lines', String(n)),
         row('Last line', p.last.hidden ? 'Hidden' : p.last.custom ? `Custom gap ${fmtLen(p.last.gap)}` : 'Standard spacing'),
         row('Last line → bottom edge', fmtLen(bottomGap(p))),
-        row('Red margin', p.marginStyle.show ? `${fmtLen(p.margin)} from left` : 'Hidden'),
-        row('Margins (T · B · L · R)', [p.margins.top, p.margins.bottom, p.margins.left, p.margins.right].map((v) => fmtLen(v).replace(/ \(.*\)/, '')).join(' · ')),
+        row('Red Line Margin', p.marginStyle.show ? `${fmtLen(p.margin)} from left` : 'Hidden'),
+        row('Right-Side Red Line Margin', p.rightLine.show ? `${fmtLen(p.rightLine.x)} from right${p.rightLine.wrap ? ' · writing stops here' : ''}` : 'Hidden'),
+        row('Top · bottom margins', [p.margins.top, p.margins.bottom].map((v) => fmtLen(v).replace(/ \(.*\)/, '')).join(' · ')),
         adjusted ? row('Individually adjusted lines', String(adjusted)) : null,
         p.partials.length ? row('Partial lines', String(p.partials.length)) : null,
         h('label.field', h('span', 'Preset name'), nameIn),
@@ -307,7 +308,13 @@ export function openPaperStudio({ paper, name = 'My paper', editingId = null, fo
     if (n >= 2 && lastL) chip(p.w + 1.5 - 62 * k, lastL.y + tiltAt(p, p.w), 'Last line', 'last', 'last');
     if (p.marginStyle.show) {
       hit({ x1: p.margin, x2: p.margin, y1: 0, y2: p.h }, 'margin', 'ew-resize');
-      chip(p.margin + 1.2, 6 + 14 * k, 'Margin', 'margin', 'margin');
+      chip(p.margin + 1.2, 6 + 14 * k, 'Red line', 'margin', 'margin');
+    }
+    if (p.rightLine.show) {
+      const rx = p.w - p.rightLine.x;
+      const label = 'Right-side red line';
+      hit({ x1: rx, x2: rx, y1: 0, y2: p.h }, 'rmargin', 'ew-resize');
+      chip(rx - (label.length * 0.6 + 1.2) * 10 * k - 1.2, 6 + 14 * k, label, 'rmargin', 'rmargin');
     }
     p.extraMargins.forEach((e, i) => hit({ x1: e.x, x2: e.x, y1: 0, y2: p.h }, `extra:${i}`, 'ew-resize'));
     return g;
@@ -394,7 +401,11 @@ export function openPaperStudio({ paper, name = 'My paper', editingId = null, fo
     } else if (what === 'margin') {
       const v = snap(clamp(pt.x, 0, p.w), e);
       t.live((pp) => { pp.margin = v; });
-      showMeasure(e, `Red margin: ${fmtLen(v)} from left`);
+      showMeasure(e, `Red Line Margin: ${fmtLen(v)} from left`);
+    } else if (what === 'rmargin') {
+      const v = snap(clamp(p.w - pt.x, 0, p.w), e);
+      t.live((pp) => { pp.rightLine.x = v; });
+      showMeasure(e, `Right-Side Red Line Margin: ${fmtLen(v)} from right`);
     } else if (what === 'extra') {
       const v = snap(clamp(pt.x, 0, p.w), e);
       t.live((pp) => { pp.extraMargins[+idx].x = v; });

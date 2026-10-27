@@ -33,7 +33,13 @@ export function normalizePaper(p) {
   p.extraMargins ||= [];
   p.autoLines ??= false;
   p.margins ||= { top: 0.25 * IN, bottom: 0.3125 * IN, left: p.margin + IN / 16, right: p.rightLimit ?? 0.25 * IN, linkLeft: true };
-  if (p.margins.linkLeft) p.margins.left = (p.marginStyle.show ? p.margin : 0) + IN / 16; // text starts 1/16 in right of the margin
+  p.margins.linkLeft = true; // text always starts just right of the red line
+  p.margins.freeRight ??= p.margins.right; // writing limit used when not wrapping at the right red line
+  // Right-side red line: the back-of-sheet margin showing faintly through the
+  // paper. x is measured from the RIGHT edge. Faded by default.
+  p.rightLine = { show: true, x: p.margin, width: p.marginStyle.width, color: p.marginStyle.color, opacity: 0.3, wrap: true, ...(p.rightLine || {}) };
+  p.margins.left = (p.marginStyle.show ? p.margin : 0) + IN / 16; // text starts 1/16 in right of the red line
+  p.margins.right = p.rightLine.show && p.rightLine.wrap ? p.rightLine.x + IN / 16 : p.margins.freeRight;
   p.rightLimit = p.margins.right;
   // Real paper is rarely perfect at the bottom: the last line can have its
   // own gap, length or be hidden, without touching the regular spacing.
@@ -61,7 +67,8 @@ export function applyPreset(paper, id) {
     Object.assign(paper, paperFromPreset(id));
   } else {
     Object.assign(paper, geometryOf(pr), { presetId: id, autoLines: false, orientation: pr.w > pr.h ? 'landscape' : 'portrait' });
-    paper.margins = { ...paper.margins, right: pr.rightLimit, linkLeft: true };
+    paper.margins = { ...paper.margins, freeRight: pr.rightLimit, linkLeft: true };
+    paper.rightLine = { ...(paper.rightLine || {}), x: pr.margin }; // back-side margin mirrors the front
     normalizePaper(paper);
   }
 }
@@ -228,6 +235,8 @@ export function paperOverlay(paper, { print = false } = {}) {
   const ms = paper.marginStyle;
   const vline = (x, st) => svg('line', { x1: x, x2: x, y1: Math.max(0, ms.start || 0), y2: Math.min(paper.h, ms.end ?? paper.h), stroke: st.color || ms.color, 'stroke-width': st.width ?? ms.width, 'stroke-opacity': st.opacity ?? ms.opacity });
   if (ms.show && paper.margin > 0) g.append(vline(paper.margin, ms));
+  const rl = paper.rightLine;
+  if (rl?.show && rl.x > 0 && rl.x < paper.w) g.append(vline(paper.w - rl.x, rl));
   for (const e of paper.extraMargins) g.append(vline(e.x, e));
   if (paper.holes && !print) {
     // Standard 3-hole punch: 4¼ in centres, ~3/8 in from the edge.

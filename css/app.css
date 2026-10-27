@@ -247,6 +247,10 @@ textarea { resize: vertical; width: 100%; }
 .subcard-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; padding-top: 4px; }
 .info { color: var(--muted); background: var(--panel-2); border-radius: 6px; padding: 6px 10px; }
 .ui .p-chip.last rect { stroke: #9fd59a; }
+.ui .p-chip.rmargin rect, .schip.rmargin rect { stroke: rgba(231, 154, 154, 0.55); stroke-dasharray: 1.5 1; }
+.schip.rmargin { cursor: ew-resize; }
+.margin-fields .ctl.numf > span:first-child { width: 150px; flex: none; }
+.margin-fields .ctl.numf .numwrap { flex: 1; }
 .ui .p-hl.last { stroke: #9fd59a; }
 
 /* ---------- two-stage workflow ---------- */

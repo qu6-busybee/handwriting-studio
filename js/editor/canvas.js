@@ -168,7 +168,12 @@ function drawPaperHandles() {
     grab({ x1: x, x2: x, y1: 0, y2: p.h }, name);
     chip(x + 3 * k, 14 * k + (name === 'p-margin' ? 0 : 22 * k), label, 'margin', name);
   };
-  if (p.marginStyle.show) vgrab(p.margin, 'p-margin', 'Margin');
+  if (p.marginStyle.show) vgrab(p.margin, 'p-margin', 'Red line');
+  if (p.rightLine?.show) {
+    const rx = p.w - p.rightLine.x;
+    grab({ x1: rx, x2: rx, y1: 0, y2: p.h }, 'p-rmargin');
+    chip(rx - 130 * k, 14 * k, 'Right-side red line', 'rmargin', 'p-rmargin');
+  }
   p.extraMargins.forEach((e, i) => vgrab(e.x, 'p-extra-' + i, `Line ${i + 2}`));
 }
 
@@ -194,7 +199,11 @@ function paperDrag(d, pt, e) {
   } else if (d.handle === 'p-margin') {
     const v = snap(clamp(pt.x, 0, p.w));
     livePaper((pp) => { pp.margin = v; });
-    showMeasure(e, `Margin: ${fmtLen(v)} from left`);
+    showMeasure(e, `Red Line Margin: ${fmtLen(v)} from left`);
+  } else if (d.handle === 'p-rmargin') {
+    const v = snap(clamp(p.w - pt.x, 0, p.w));
+    livePaper((pp) => { pp.rightLine.x = v; });
+    showMeasure(e, `Right-Side Red Line Margin: ${fmtLen(v)} from right`);
   } else if (d.handle.startsWith('p-extra-')) {
     const i = +d.handle.slice(8);
     const v = snap(clamp(pt.x, 0, p.w));
@@ -426,6 +435,7 @@ function snapTargets(excludeIds) {
   if (state.project.view.snapMargin !== false) {
     xs.push(wb.x, wb.x + wb.w);
     if (p.marginStyle?.show !== false) xs.push(p.margin);
+    if (p.rightLine?.show) xs.push(p.w - p.rightLine.x);
     for (const e of p.extraMargins || []) xs.push(e.x);
   }
   const ys = [0, p.h / 2, p.h];

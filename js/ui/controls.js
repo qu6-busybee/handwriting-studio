@@ -59,7 +59,7 @@ export function fmtLen(mm) {
 
 // Length fields are text boxes so fractions can be typed: "1 1/2", "1/12",
 // "8.5", or with a unit ("21 mm"). unit 'mm' marks a length.
-export function numField(label, get, { step = 0.1, unit = 'mm', onChange, disabled }) {
+export function numField(label, get, { step = 0.1, unit = 'mm', onChange, disabled, tip }) {
   const len = unit === 'mm';
   const u = getUnit();
   const show = () => (len ? fmtNum(get(), u) : String(round(get(), 1)));
@@ -77,7 +77,7 @@ export function numField(label, get, { step = 0.1, unit = 'mm', onChange, disabl
     onChange(get() + d);
     inp.value = show();
   });
-  const el = h('label.ctl.numf', h('span', label), h('div.numwrap', inp, h('span.unit', len ? u : unit)));
+  const el = h('label.ctl.numf', { title: tip || null }, h('span', label), h('div.numwrap', inp, h('span.unit', len ? u : unit)));
   reg(el, () => { inp.value = show(); });
   return el;
 }
