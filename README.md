@@ -8,6 +8,8 @@ Handwriting Studio is a browser editor for making realistic handwritten pages an
 
 It's a static site: plain ES modules with no build step and no server. It runs offline once loaded.
 
+**Use it online:** https://qu6-busybee.github.io/handwriting-studio/
+
 ## Run it
 
 ```bash
