@@ -2,7 +2,7 @@ import * as S from './state.js';
 import * as store from './store.js';
 import { initStyles } from './handwriting/styles.js';
 import { initCanvas, initClipboard } from './editor/canvas.js';
-import { initTopbar, initLeft } from './ui/panels.js';
+import { initTopbar, initLeft, initStepView } from './ui/panels.js';
 import { initProps } from './ui/props.js';
 import { openPrintPreview } from './print.js';
 
@@ -24,6 +24,7 @@ async function boot() {
   }
 
   initTopbar();
+  initStepView();
   initLeft();
   initCanvas();
   initProps();

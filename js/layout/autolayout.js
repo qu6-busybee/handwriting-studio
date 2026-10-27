@@ -9,6 +9,7 @@ import { analyze, summarize, BLOCK_TYPES } from './analyze.js';
 import { placeBlocks } from './place.js';
 import { paperLabel } from '../paper.js';
 import { recognize, getKey, setKey, isRemembered, MODEL } from './claude.js';
+import { can, upgradeDialog } from '../plan.js';
 
 const { state } = S;
 
@@ -59,6 +60,7 @@ const imageSize = (src) => new Promise((res) => {
 });
 
 export function openAutoLayout() {
+  if (!can('aiLayout')) return upgradeDialog('aiLayout');
   const m = openModal('AI Auto-Layout', { wide: true });
   m.el.classList.add('autolayout');
   const opts = { start: 'after', joinLines: true, indentParagraphs: true, gapParagraphs: false };
@@ -249,7 +251,7 @@ export function openAutoLayout() {
   m.foot.append(
     h('span.muted.small.grow', 'Content appears as plain text so you can review it. Nothing is handwritten until you click Generate Handwriting.'),
     h('button.btn', { on: { click: m.close } }, 'Cancel'),
-    h('button.btn.primary', { on: { click: run } }, 'Lay out on paper'));
+    h('button.btn.primary', { on: { click: run } }, 'Auto-Organize'));
   render();
   setTimeout(() => ta.focus(), 0);
 }

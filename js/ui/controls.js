@@ -142,11 +142,12 @@ export function segmented(label, get, items, onChange) {
   return el;
 }
 
-export function colorRow(label, get, onChange, { allowNone = false, presets = INKS } = {}) {
+export function colorRow(label, get, onChange, { allowNone = false, presets = INKS, custom = true } = {}) {
   const wrap = h('div.swatches');
-  const custom = h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(get()) ? get() : '#000000', title: 'Custom colour' });
-  custom.addEventListener('input', () => onChange(custom.value, false));
-  custom.addEventListener('change', () => onChange(custom.value, true));
+  const customAllowed = custom;
+  const picker = h('input', { type: 'color', value: /^#[0-9a-f]{6}$/i.test(get()) ? get() : '#000000', title: 'Custom colour' });
+  picker.addEventListener('input', () => onChange(picker.value, false));
+  picker.addEventListener('change', () => onChange(picker.value, true));
   const sw = presets.map((p) => {
     const b = h('button.sw', { title: p.name, style: { background: p.color }, on: { click: () => onChange(p.color, true) } });
     b.dataset.c = p.color;
@@ -157,7 +158,8 @@ export function colorRow(label, get, onChange, { allowNone = false, presets = IN
     n.dataset.c = 'none';
     sw.unshift(n);
   }
-  wrap.append(...sw, h('label.sw.custom', { title: 'Custom colour' }, custom));
+  wrap.append(...sw);
+  if (customAllowed) wrap.append(h('label.sw.custom', { title: 'Custom colour' }, picker));
   const upd = () => sw.forEach((b) => b.classList.toggle('on', b.dataset.c.toLowerCase() === String(get()).toLowerCase()));
   upd();
   const el = h('div.ctl.colors', h('span.lbl', label), wrap);

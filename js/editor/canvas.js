@@ -39,6 +39,13 @@ export function initCanvas() {
     renderAll();
   });
   bus.on('tool', () => { ws.dataset.tool = state.tool; });
+  // The editor is hidden during Step 1, so fit the page once it's visible.
+  let lastStep = null;
+  bus.on('step', () => {
+    const s = state.project?.step;
+    if (s !== 1 && (lastStep === 1 || lastStep === null)) requestAnimationFrame(() => requestAnimationFrame(zoomFit));
+    lastStep = s;
+  });
 
   pageSvg.addEventListener('pointerdown', onDown);
   pageSvg.addEventListener('dblclick', onDblClick);

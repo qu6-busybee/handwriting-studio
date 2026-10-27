@@ -45,15 +45,28 @@ function usePreset(id, forNewProject) {
 }
 
 // ---------- Step 1: library ----------
+// In Step 1 the library is the whole screen; elsewhere it opens as a dialog.
 export function openPaperLibrary({ forNewProject = false } = {}) {
+  if (!forNewProject && state.project?.step === 1) { S.bus.emit('step'); return; }
   const m = openModal(forNewProject ? 'New project · Choose your paper' : 'Paper library', { wide: true });
   m.el.classList.add('library');
+  m.body.append(libraryView({ forNewProject, close: m.close }));
+  if (!forNewProject && state.project) {
+    m.foot.append(
+      h('span.muted.small.grow', 'Need a quick tweak? Adjust this project’s paper directly on the page.'),
+      h('button.btn', { on: { click: () => { m.close(); S.setStep(2); S.setPaperEdit(true); } } }, 'Adjust on page'));
+  }
+}
+
+// The library itself. embedded = shown as Step 1 (stays open after "Use").
+export function libraryView({ forNewProject = false, close = () => {}, embedded = false } = {}) {
+  const m = { close: embedded ? () => {} : close };
   const currentId = state.project?.paper.presetId;
 
   const card = (pr, mine) => {
-    const isCurrent = !forNewProject && pr.id === currentId;
+    const isCurrent = !forNewProject && pr.id === state.project?.paper.presetId;
     const paper = pr.paper || paperFromPreset(pr.id);
-    const use = () => { m.close(); usePreset(pr.id, forNewProject); };
+    const use = () => { m.close(); usePreset(pr.id, forNewProject); if (embedded) render(); };
     return h('div.pcard' + (isCurrent ? '.current' : ''),
       h('button.pcard-preview', { title: 'Use this paper', on: { click: use } }, thumb(paper)),
       h('div.pcard-info',
@@ -76,6 +89,14 @@ export function openPaperLibrary({ forNewProject = false } = {}) {
     const mine = userPresets().sort((a, b) => (b.updated || 0) - (a.updated || 0));
     const draft = loadDraft();
     body.replaceChildren(...[
+      embedded && h('div.current-paper',
+        thumb(state.project.paper),
+        h('div',
+          h('span.muted.small', 'This project uses'),
+          h('strong', paperLabel(state.project.paper)),
+          h('span.muted.small', rulingName(state.project.paper.spacing))),
+        h('span.grow'),
+        h('button.btn.primary.big', { on: { click: () => S.setStep(2) } }, 'Continue to Editor →')),
       h('div.lib-head',
         h('p.muted', forNewProject ? 'Pick the paper you will print on. You can change it later.' : 'Pick a paper for this project, or create one that matches your notebook exactly.'),
         h('button.btn.primary', { on: { click: () => {
@@ -102,15 +123,12 @@ export function openPaperLibrary({ forNewProject = false } = {}) {
         : h('p.muted.small.empty', 'No saved papers yet. Create one, or customize a template below.'),
       h('h3', 'Starting templates'),
       h('div.pgrid', ...PAPER_PRESETS.map((pr) => card(pr, false))),
+      embedded && h('p.muted.small.lib-foot', 'Need a quick tweak instead? ',
+        h('button.btn.small.link', { on: { click: () => { S.setStep(2); S.setPaperEdit(true); } } }, 'Adjust this project’s paper on the page')),
     ].filter((x) => x != null && x !== false));
   };
   render();
-  m.body.append(body);
-  if (!forNewProject && state.project) {
-    m.foot.append(
-      h('span.muted.small.grow', 'Need a quick tweak? Adjust this project’s paper directly on the page.'),
-      h('button.btn', { on: { click: () => { m.close(); S.setPaperEdit(true); } } }, 'Adjust on page'));
-  }
+  return body;
 }
 
 function renameDialog(pr, done) {

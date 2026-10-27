@@ -12,18 +12,19 @@ export const PRESET_STYLES = [
   { id: 'indie', name: 'Rounded', font: 'indie-flower', category: 'casual' },
   { id: 'kalam', name: 'Neat print', font: 'kalam', category: 'neat' },
   { id: 'shadows', name: 'Light print', font: 'shadows-into-light', category: 'neat' },
-  { id: 'grace', name: 'Quick print', font: 'covered-by-your-grace', category: 'rushed' },
-  { id: 'reenie', name: 'Scrawl', font: 'reenie-beanie', category: 'rushed' },
-  { id: 'zeyada', name: 'Hurried cursive', font: 'zeyada', category: 'rushed' },
+  { id: 'grace', name: 'Quick print', font: 'covered-by-your-grace', category: 'rushed', premium: true },
+  { id: 'reenie', name: 'Scrawl', font: 'reenie-beanie', category: 'rushed', premium: true },
+  { id: 'zeyada', name: 'Hurried cursive', font: 'zeyada', category: 'rushed', premium: true },
   { id: 'cedarville', name: 'School cursive', font: 'cedarville-cursive', category: 'cursive' },
-  { id: 'homemade', name: 'Loopy cursive', font: 'homemade-apple', category: 'cursive' },
-  { id: 'dawning', name: 'Thin cursive', font: 'dawning-of-a-new-day', category: 'cursive' },
-  { id: 'labelle', name: 'Flowing cursive', font: 'la-belle-aurore', category: 'cursive' },
+  { id: 'homemade', name: 'Loopy cursive', font: 'homemade-apple', category: 'cursive', premium: true },
+  { id: 'dawning', name: 'Thin cursive', font: 'dawning-of-a-new-day', category: 'cursive', premium: true },
+  { id: 'labelle', name: 'Flowing cursive', font: 'la-belle-aurore', category: 'cursive', premium: true },
 ];
 const FALLBACK_FONT = 'kalam';
 // Plain digital font for the editing stage; also drives line wrapping so the
 // approved layout keeps its line breaks after handwriting is generated.
-const CLEAN_FONT = 'inter';
+// Arimo has the same letter widths as Arial (free licence, unlike Arial itself).
+const CLEAN_FONT = 'arimo';
 
 const custom = new Map(); // id -> stored record
 const providers = new Map(); // id -> provider

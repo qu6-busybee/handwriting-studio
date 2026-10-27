@@ -76,7 +76,30 @@ export function createProject(presetId = 'filler-wide') {
     view: { overlay: true, printable: true },
     stage: 'edit', // 'edit' = clean typed layout, 'handwriting' = generated
     print: { mode: 'ink' }, // 'ink' | 'template' | 'both'
+    step: 1, // 1 Choose paper · 2 Add content · 3 Handwriting & print
   };
+}
+
+// ---------- three-step workflow ----------
+// Moving between steps never loses work. Leaving Step 3 shows the text as
+// plain Arial again; generated handwriting is kept and reappears unchanged
+// when "Generate Handwriting" is clicked for unchanged text.
+export function setStep(n) {
+  const p = state.project;
+  if (!p || p.step === n) return;
+  if (n !== 3 && p.stage === 'handwriting') p.stage = 'edit';
+  if (state.editingId) state.editingId = null;
+  state.paperEdit = false;
+  state.selection = new Set();
+  state.tool = 'select';
+  p.step = n;
+  scheduleSave();
+  bus.emit('step');
+  bus.emit('stage');
+  bus.emit('paperEdit');
+  bus.emit('tool');
+  bus.emit('selection');
+  bus.emit('change');
 }
 
 // ---------- two-stage workflow ----------
@@ -242,6 +265,7 @@ export function loadProject(p) {
   p.assets ||= {};
   p.stage ||= 'edit';
   p.print ||= { mode: 'ink' };
+  p.step ||= 2; // projects from before the step workflow open in the editor
   normalizePaper(p.paper);
   resetHistory();
   bus.emit('project');

@@ -6,6 +6,7 @@ import { layoutText } from '../handwriting/engine.js';
 import { PENS, INK_PRESETS, GRAPHITE_PRESETS, penLook, inkFilter, isPencil } from '../handwriting/pens.js';
 import { allStyles, ensureProvider } from '../handwriting/styles.js';
 import { section, slider, toggle, select, segmented, colorRow } from './controls.js';
+import { can, gate, upgradeDialog } from '../plan.js';
 
 const { state } = S;
 const SAMPLE = 'The quick brown fox jumps over the lazy dog.';
@@ -49,23 +50,28 @@ function preview(get) {
 function styleOptions(cursive) {
   const all = allStyles().filter((s) => (s.font ? (cursive ? s.category === 'cursive' : s.category !== 'cursive') : true));
   const cats = cursive ? [['cursive', 'Cursive']] : [['neat', 'Neat'], ['casual', 'Casual'], ['rushed', 'Rushed']];
-  const out = cats.map(([k, label]) => ({ group: label, items: all.filter((s) => s.font && s.category === k).map((s) => ({ value: s.id, label: s.name })) }));
+  const tag = (s) => s.name + ((s.premium || !s.font) && !can('premiumStyles') ? ' (Pro)' : '');
+  const out = cats.map(([k, label]) => ({ group: label, items: all.filter((s) => s.font && s.category === k).map((s) => ({ value: s.id, label: tag(s) })) }));
   const mine = all.filter((s) => !s.font);
-  if (mine.length) out.push({ group: 'Your handwriting', items: mine.map((s) => ({ value: s.id, label: s.name })) });
+  if (mine.length) out.push({ group: 'Your handwriting', items: mine.map((s) => ({ value: s.id, label: tag(s) })) });
   return out;
 }
 const isCursive = (id) => allStyles().find((s) => s.id === id)?.category === 'cursive';
 
 // objs: text objects (or [{ hw: writer.defaults }]). opts.defaults = true for
 // the writer defaults (no regenerate/restore buttons).
-export function hwSettings(objs, { rebuild, defaults = false } = {}) {
+// element = true: Pro per-element styling (the box keeps its own settings
+// when document-wide settings change later).
+export function hwSettings(objs, { rebuild, defaults = false, element = false } = {}) {
   const o0 = objs[0];
   const hw = () => o0.hw;
   let pv;
-  const live = () => { pv?.draw(); S.bus.emit('change'); };
-  const done = () => { pv?.draw(); S.commit(); };
+  const mark = () => { if (element) objs.forEach((o) => { o.hw.custom = true; }); };
+  const live = () => { mark(); pv?.draw(); S.bus.emit('change'); };
+  const done = () => { mark(); pv?.draw(); S.commit(); };
   const set = (k) => (v) => { objs.forEach((o) => (o.hw[k] = v)); live(); };
   const setC = (k) => (v) => { objs.forEach((o) => (o.hw[k] = v)); done(); };
+  const adv = (el) => gate(el, 'advancedInk'); // Pro-only control (visible to Basic)
   const sl = (label, k, def, opts) => slider(label, () => hw()[k] ?? def, { min: 0, max: 1, step: 0.01, fmt: pct, onInput: set(k), onCommit: done, ...opts });
   pv = preview(hw);
 
@@ -77,8 +83,9 @@ export function hwSettings(objs, { rebuild, defaults = false } = {}) {
   const out = [pv.el];
   if (!defaults) out.push(stageNote(objs));
 
+  const advancedInk = can('advancedInk');
   out.push(section('Pen & ink', [
-    select('Instrument', () => pen, Object.entries(PENS).map(([k, p]) => ({ value: k, label: p.label })), (v) => {
+    adv(select('Instrument', () => pen, Object.entries(PENS).map(([k, p]) => ({ value: k, label: p.label })), (v) => {
       const wasPencil = isPencil(pen), nowPencil = isPencil(v);
       objs.forEach((o) => {
         o.hw.pen = v;
@@ -87,16 +94,26 @@ export function hwSettings(objs, { rebuild, defaults = false } = {}) {
       });
       done();
       rebuild();
-    }),
-    colorRow(pencil ? 'Graphite' : 'Ink colour', () => hw().color, (v, c) => { objs.forEach((o) => (o.hw.color = v)); hex.value = v; c ? done() : live(); }, { presets: pencil ? GRAPHITE_PRESETS : INK_PRESETS }),
-    h('label.ctl.hexrow', h('span', 'HEX'), hex),
-    sl('Ink darkness', 'darkness', 0.5, { tip: 'Lighter or darker than the chosen colour' }),
-    sl('Pen pressure', 'pressure', 0.5, { tip: 'Heavier pressure: thicker, darker strokes' }),
+    })),
+    // Basic: preset inks. Pro: every preset plus any colour.
+    colorRow(pencil ? 'Graphite' : 'Ink colour', () => hw().color, (v, c) => { objs.forEach((o) => (o.hw.color = v)); hex.value = v; c ? done() : live(); },
+      { presets: pencil ? GRAPHITE_PRESETS : advancedInk ? INK_PRESETS : BASIC_INKS, custom: advancedInk }),
+    adv(h('label.ctl.hexrow', h('span', 'HEX'), hex)),
     slider('Stroke thickness', () => hw().weight ?? 0.05, { min: 0, max: 0.35, step: 0.01, unit: 'mm', onInput: set('weight'), onCommit: done }),
-    pencil && sl('Pencil softness', 'softness', 0.5, { tip: 'Soft graphite: darker, grainier, slightly wider' }),
-    sl('Opacity', 'opacity', 1, { min: 0.2 }),
+    adv(sl('Ink darkness', 'darkness', 0.5, { tip: 'Lighter or darker than the chosen colour' })),
+    adv(sl('Pen pressure', 'pressure', 0.5, { tip: 'Heavier pressure: thicker, darker strokes' })),
+    pencil && adv(sl('Pencil softness', 'softness', 0.5, { tip: 'Soft graphite: darker, grainier, slightly wider' })),
+    adv(sl('Opacity', 'opacity', 1, { min: 0.2 })),
   ].filter(Boolean)));
 
+  const styleSel = select('Style', () => hw().style, styleOptions(isCursive(hw().style)), (v) => {
+    const st = allStyles().find((s) => s.id === v);
+    if ((st?.premium || !st?.font) && !can('premiumStyles')) {
+      styleSel.querySelector('select').value = hw().style;
+      return upgradeDialog(st?.font ? 'premiumStyles' : 'customHandwriting');
+    }
+    setC('style')(v);
+  });
   out.push(section('Handwriting style', [
     segmented('Type', () => (isCursive(hw().style) ? 'cursive' : 'print'), [['print', 'Print'], ['cursive', 'Cursive']], (v) => {
       const want = v === 'cursive';
@@ -106,19 +123,19 @@ export function hwSettings(objs, { rebuild, defaults = false } = {}) {
       }
       rebuild();
     }),
-    select('Style', () => hw().style, styleOptions(isCursive(hw().style)), setC('style')),
+    styleSel,
     toggle('Size follows lines', () => !!hw().autoSize, (v) => { objs.forEach((o) => (o.hw.autoSize = v)); done(); rebuild(); }, 'Letters scale with the paper’s line spacing'),
     hw().autoSize
       ? slider('Letter size', () => hw().sizeRatio || 0.37, { min: 0.2, max: 0.6, step: 0.01, fmt: pct, onInput: set('sizeRatio'), onCommit: done, tip: 'Lowercase height as a share of the line spacing' })
       : slider('Letter size', () => hw().size, { min: 1.2, max: 9, step: 0.05, unit: 'mm', onInput: set('size'), onCommit: done }),
     sl('Neatness', 'neatness', 0.55),
-    sl('Writing speed', 'speed', 0.5, { tip: 'Faster writing: looser letters, more slant and spacing changes' }),
-    slider('Slant', () => hw().slant || 0, { min: -20, max: 25, step: 0.5, unit: '°', onInput: set('slant'), onCommit: done }),
-    slider('Word spacing', () => hw().wordSpacing ?? 1, { min: 0.4, max: 2.5, step: 0.05, unit: '×', onInput: set('wordSpacing'), onCommit: done }),
-    slider('Letter spacing', () => hw().letterSpacing ?? 0, { min: -0.6, max: 1.5, step: 0.02, unit: 'mm', onInput: set('letterSpacing'), onCommit: done }),
+    adv(sl('Writing speed', 'speed', 0.5, { tip: 'Faster writing: looser letters, more slant and spacing changes' })),
+    adv(slider('Slant', () => hw().slant || 0, { min: -20, max: 25, step: 0.5, unit: '°', onInput: set('slant'), onCommit: done })),
+    adv(slider('Word spacing', () => hw().wordSpacing ?? 1, { min: 0.4, max: 2.5, step: 0.05, unit: '×', onInput: set('wordSpacing'), onCommit: done })),
+    adv(slider('Letter spacing', () => hw().letterSpacing ?? 0, { min: -0.6, max: 1.5, step: 0.02, unit: 'mm', onInput: set('letterSpacing'), onCommit: done })),
   ]));
 
-  out.push(section('Natural variation', [
+  out.push(adv(section('Natural variation', [
     h('p.muted.small', 'Keep these subtle for writing that looks natural but stays readable.'),
     slider('Ink consistency', () => 1 - (hw().inkVar ?? 0.5), { min: 0, max: 1, step: 0.01, fmt: pct, onInput: (v) => set('inkVar')(1 - v), onCommit: done, tip: 'How evenly ink is laid down' }),
     sl('Stroke variation', 'strokeVar', 0.5, { tip: 'Thickness changes from letter to letter' }),
@@ -129,18 +146,26 @@ export function hwSettings(objs, { rebuild, defaults = false } = {}) {
     sl('Baseline drift', 'drift', 0.5),
     sl('Natural mistakes', 'mistakes', 0, { tip: 'Occasionally misspells a word, crosses it out and rewrites it' }),
     toggle('Sit on ruled lines', () => hw().followLines !== false, (v) => { objs.forEach((o) => (o.hw.followLines = v)); done(); }),
-  ], { collapsible: true, open: false }));
+  ], { collapsible: true, open: false })));
 
   const actions = h('div.btn-col');
-  if (!defaults && state.project.stage === 'handwriting') {
-    actions.append(h('button.btn', { title: 'Write this section again with fresh natural variation', on: { click: () => S.regenerate(objs) } }, objs.length > 1 ? 'Regenerate these sections' : 'Regenerate this section'));
-    if (objs.some((o) => o.gen)) actions.append(h('button.btn', { title: 'Show this box as plain typed text again (your text is unchanged)', on: { click: () => { objs.forEach((o) => delete o.gen); done(); rebuild(); } } }, 'Restore typed text'));
+  const texts = objs.filter((o) => o.type === 'text');
+  if (state.project.stage === 'handwriting') {
+    const targets = texts.length ? texts : state.project.pages.flatMap((pg) => pg.objects.filter((o) => o.type === 'text'));
+    actions.append(h('button.btn', { title: 'Write it again with fresh natural variation', on: { click: () => S.regenerate(targets) } }, element ? (texts.length > 1 ? 'Regenerate these sections' : 'Regenerate this section') : 'Regenerate all handwriting'));
+    if (element && texts.some((o) => o.gen)) actions.append(h('button.btn', { title: 'Show this box as plain typed text again (your text is unchanged)', on: { click: () => { texts.forEach((o) => delete o.gen); done(); rebuild(); } } }, 'Restore typed text'));
   }
-  actions.append(h('button.btn', { title: 'Copy these handwriting settings to every text box on every page', on: { click: () => applyToDocument(o0.hw) } }, 'Apply to entire document'));
+  if (element) {
+    actions.append(
+      h('button.btn', { title: 'Copy these settings to every text box', on: { click: () => applyToDocument(o0.hw) } }, 'Apply to entire document'),
+      h('button.btn.ghost', { title: 'Follow the document’s handwriting settings again', on: { click: () => { texts.forEach((o) => { const keep = { seed: o.hw.seed, wordSeeds: o.hw.wordSeeds }; o.hw = { ...state.project.writer.defaults, ...keep }; }); S.commit(); rebuild(); } } }, 'Use document settings'));
+  }
   out.push(actions);
-  if (!defaults) out.push(h('p.muted.small', 'Tip: while editing text, select words and pick a colour, or “Rewrite words” after generating.'));
+  if (element) out.push(h('p.muted.small', 'Tip: double-click text, select words and pick a colour, or “Rewrite words” after generating.'));
   return out.filter(Boolean);
 }
+
+const BASIC_INKS = INK_PRESETS.filter((p) => ['Standard blue', 'Dark blue', 'Black', 'Red', 'Blue-black'].includes(p.name));
 
 const PER_BOX = new Set(['seed', 'wordSeeds']);
 export function applyToDocument(src) {

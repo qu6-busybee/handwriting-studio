@@ -13,14 +13,16 @@ import { hwSettings } from './hwpanel.js';
 import { PENS, INK_PRESETS } from '../handwriting/pens.js';
 import { openPaperLibrary } from './paperstudio.js';
 import { commitPaper } from '../paperedit.js';
-import { applyPreset } from '../paper.js';
+import { applyPreset, paperLabel } from '../paper.js';
+import { rulingName } from '../units.js';
+import { can, gate, upgradeDialog, proBadge } from '../plan.js';
 
 const { state, bus } = S;
 let root;
 
 export function initProps() {
   root = document.getElementById('rightpanel');
-  for (const ev of ['selection', 'page', 'project', 'styles', 'stage', 'editing', 'paperEdit']) bus.on(ev, build);
+  for (const ev of ['selection', 'page', 'project', 'styles', 'stage', 'editing', 'paperEdit', 'step', 'plan']) bus.on(ev, build);
   bus.on('history', () => {
     // Paper settings can change shape on undo (e.g. extra lines); rebuild
     // unless the user is typing in the panel.
@@ -55,31 +57,35 @@ function build() {
   root.replaceChildren(body);
 }
 
-// ---------- nothing selected: page + writer ----------
+// The document's handwriting: writer defaults plus every text box that
+// hasn't been given its own style, edited together.
+const documentTargets = () => [{ hw: state.project.writer.defaults }, ...state.project.pages.flatMap((pg) => pg.objects.filter((o) => o.type === 'text' && !o.hw.custom))];
+
+function documentHandwriting() {
+  const p = state.project;
+  return section('Handwriting for the whole document', [
+    h('p.muted.small', can('perElement') ? 'Applies to every text box. Select a text box to give it its own style (Pro).' : 'Applies to every text box on every page.'),
+    ...hwSettings(documentTargets(), { rebuild: build, defaults: true }),
+    h('button.btn.block', { title: 'A different person: changes everyone’s letter habits and slant', on: { click: () => { p.writer.seed = (Math.random() * 1e9) | 0; done(); } } }, 'New writer'),
+  ]);
+}
+
+// ---------- nothing selected ----------
 function pageProps() {
   const p = state.project;
-  const d = p.writer.defaults;
-  const setD = (k) => (v) => { d[k] = v; };
+  if (p.step === 3) return [documentHandwriting()];
   return [
     section('Paper', [
-      select('', () => p.paper.presetId, presetOptions(p.paper), (v) => {
-        commitPaper((pp) => applyPreset(pp, v));
-        d.size = +(p.paper.spacing * 0.37).toFixed(2);
-        build();
-      }),
-      h('p.muted.small', 'The lines, margin and paper colour are a guide only. By default, printing outputs just your writing, because your real paper already has the lines.'),
+      h('div.paper-summary', h('strong', paperLabel(p.paper)), h('span.muted.small', rulingName(p.paper.spacing))),
+      h('div.btn-row',
+        h('button.btn', { on: { click: () => S.setStep(1) } }, 'Change paper'),
+        h('button.btn', { on: { click: () => S.setPaperEdit(true) } }, 'Adjust on page')),
+      h('p.muted.small', 'The lines and margins are a guide only. By default, printing outputs just your writing.'),
       toggle('Show notebook lines', () => p.view.overlay, (v) => { p.view.overlay = v; done(); }, 'Never printed in “Handwriting only” mode'),
       toggle('Show printable area', () => p.view.printable !== false, (v) => { p.view.printable = v; done(); }, 'Dashed box: your printer can’t print outside it'),
       toggle('Snap text to lines', () => p.view.snapLines !== false, (v) => { p.view.snapLines = v; done(); }),
       segmented('Units', getUnit, [['in', 'in'], ['mm', 'mm'], ['cm', 'cm']], (v) => { setUnit(v); build(); }),
-      h('div.btn-row',
-        h('button.btn', { on: { click: () => openPaperLibrary() } }, 'Paper settings…'),
-        h('button.btn', { on: { click: openCalibration } }, 'Calibrate printer…')),
-    ]),
-    section('Handwriting settings', [
-      h('p.muted.small', 'For new text, and for the whole document with “Apply to entire document”. Select a text box to change just that box.'),
-      ...hwSettings([{ hw: d }], { rebuild: build, defaults: true }),
-      h('button.btn.block', { title: 'A different person: changes everyone’s letter habits and slant', on: { click: () => { p.writer.seed = (Math.random() * 1e9) | 0; done(); } } }, 'New writer'),
+      h('button.btn.block', { on: { click: openCalibration } }, 'Calibrate printer…'),
     ]),
     section('Shortcuts', [h('div.shortcuts',
       ...[['T', 'Text'], ['P', 'Pen'], ['R / O / L / A', 'Shapes'], ['Dbl-click', 'Edit text'], ['Ctrl D', 'Duplicate'], ['Ctrl G', 'Group'], ['Alt-drag', 'Copy'], ['Space-drag', 'Pan'], ['Ctrl wheel', 'Zoom']]
@@ -90,6 +96,17 @@ function pageProps() {
 // ---------- single object ----------
 function objectProps(o) {
   const out = [];
+  const step3 = state.project.step === 3;
+  if (o.type === 'text' && step3) {
+    // Step 3: handwriting for this box (Pro) or the document (Basic).
+    if (can('perElement')) out.push(section('Handwriting for this text box', hwSettings([o], { rebuild: build, element: true })));
+    else {
+      out.push(h('div.stage-note', 'Basic applies handwriting to the whole document. ', h('button.btn.small.link', { on: { click: () => upgradeDialog('perElement') } }, 'Per-element styles'), ' ', proBadge()));
+      out.push(documentHandwriting());
+    }
+    out.push(geometry(o));
+    return out;
+  }
   if (o.type === 'text') {
     const ta = h('textarea.text-input', { rows: 5, value: o.text, placeholder: 'Type your text…', spellcheck: true });
     ta.addEventListener('input', () => { o.text = ta.value; live(); });
@@ -98,7 +115,7 @@ function objectProps(o) {
     out.push(section('Text', [ta, h('p.muted.small', 'Tab = paragraph indent · ~~crossed out~~ · __underlined__ · [red]coloured words[/] (blue, black, red, green, purple, darkblue, lightblue, blueblack or #hex)'),
       h('button.btn.small.link', { on: { click: () => startEditing(o.id) } }, 'Edit on the page')]));
     ta.addEventListener('keydown', (e) => { if (e.key === 'Tab') { e.preventDefault(); ta.setRangeText('\t', ta.selectionStart, ta.selectionEnd, 'end'); ta.dispatchEvent(new Event('input')); } });
-    out.push(section('Handwriting settings', hwSettings([o], { rebuild: build })));
+    out.push(h('p.muted.small.step-hint', 'Typed in an Arial-style font. Choose handwriting in Step 3.'));
   } else if (o.type === 'shape') {
     out.push(section(o.name || 'Shape', shapeControls([o])));
   } else if (o.type === 'path') {
@@ -106,7 +123,7 @@ function objectProps(o) {
       !o.highlighter && instrumentSelect([o]),
       colorRow('Colour', () => o.stroke, (v, c) => { o.stroke = v; live(); if (c) done(); }, { presets: o.highlighter ? HL : INK_PRESETS }),
       slider('Width', () => o.strokeWidth, { min: 0.15, max: 8, step: 0.05, unit: 'mm', onInput: (v) => { o.strokeWidth = v; live(); }, onCommit: done }),
-      !o.highlighter && slider('Pen pressure', () => o.pressure ?? 0.5, { min: 0, max: 1, step: 0.01, fmt: (v) => Math.round(v * 100) + '%', onInput: (v) => { o.pressure = v; live(); }, onCommit: done }),
+      !o.highlighter && gate(slider('Pen pressure', () => o.pressure ?? 0.5, { min: 0, max: 1, step: 0.01, fmt: (v) => Math.round(v * 100) + '%', onInput: (v) => { o.pressure = v; live(); }, onCommit: done }), 'advancedInk'),
     ].filter(Boolean)));
   } else if (o.type === 'image') {
     out.push(section('Image', [h('p.muted.small', 'Images print exactly as shown. Use PNGs with transparent backgrounds for stickers or diagrams.')]));
@@ -117,6 +134,9 @@ function objectProps(o) {
 
 // Shapes and drawings can use any writing instrument (e.g. a pencil diagram).
 function instrumentSelect(objs) {
+  return gate(instrumentSelectRaw(objs), 'advancedInk');
+}
+function instrumentSelectRaw(objs) {
   return select('Instrument', () => objs[0].pen || 'ballpoint', Object.entries(PENS).map(([k, p]) => ({ value: k, label: p.label })), (v) => {
     objs.forEach((o) => {
       if (PENS[v].kind === 'pencil' && PENS[o.pen || 'ballpoint'].kind !== 'pencil') o.stroke = '#47494f';
@@ -135,7 +155,7 @@ function shapeControls(objs) {
   return [
     !isHL && instrumentSelect(objs),
     !isHL && colorRow('Stroke', () => o0.stroke, (v, c) => { set('stroke')(v); if (c) done(); }, { presets: INK_PRESETS }),
-    !isHL && slider('Pen pressure', () => o0.pressure ?? 0.5, { min: 0, max: 1, step: 0.01, fmt: (v) => Math.round(v * 100) + '%', onInput: set('pressure'), onCommit: done }),
+    !isHL && gate(slider('Pen pressure', () => o0.pressure ?? 0.5, { min: 0, max: 1, step: 0.01, fmt: (v) => Math.round(v * 100) + '%', onInput: set('pressure'), onCommit: done }), 'advancedInk'),
     !isHL && slider('Stroke width', () => o0.strokeWidth, { min: 0.15, max: 3, step: 0.05, unit: 'mm', onInput: set('strokeWidth'), onCommit: done }),
     ['rect', 'ellipse', 'triangle', 'star', 'highlight'].includes(o0.shape) && colorRow('Fill', () => o0.fill, (v, c) => { set('fill')(v); if (c) done(); }, { allowNone: !isHL, presets: isHL ? HL : undefined }),
     !isHL && toggle('Hand-drawn', () => o0.handDrawn !== false, (v) => { set('handDrawn')(v); done(); }),
@@ -177,7 +197,10 @@ function multiProps(objs) {
   const texts = objs.filter((o) => o.type === 'text');
   const shapes = objs.filter((o) => o.type === 'shape');
   const out = [section(`${objs.length} objects`, [alignButtons()])];
-  if (texts.length) out.push(section(`Handwriting settings (${texts.length} text)`, hwSettings(texts, { rebuild: build })));
+  if (texts.length && state.project.step === 3) {
+    if (can('perElement')) out.push(section(`Handwriting for ${texts.length} text boxes`, hwSettings(texts, { rebuild: build, element: true })));
+    else out.push(documentHandwriting());
+  }
   if (shapes.length) out.push(section(`Shapes (${shapes.length})`, shapeControls(shapes)));
   out.push(arrangeSection(objs));
   return out;

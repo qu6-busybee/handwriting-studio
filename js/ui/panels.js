@@ -10,7 +10,8 @@ import { PRESET_STYLES, customStyles, ensureProvider, deleteCustomStyle } from '
 import { openDrawStudio, openScanStudio, uploadFontStyle } from '../handwriting/capture.js';
 import { openPrintPreview, openCalibration, openExamplePrint, exportPDF, exportPNG, saveProjectFile, openProjectFile, openProjectList } from '../print.js';
 import { alignButtons, align } from './props.js';
-import { openPaperLibrary } from './paperstudio.js';
+import { openPaperLibrary, libraryView } from './paperstudio.js';
+import { getPlan, setPlan, isPro, can, upgradeDialog, proBadge } from '../plan.js';
 import { openAutoLayout } from '../layout/autolayout.js';
 import { confirmDialog } from './modal.js';
 
@@ -35,23 +36,35 @@ document.addEventListener('pointerdown', (e) => { if (openMenu && !openMenu.el.c
 const tbtn = (name, title, onClick) => h('button.icon-btn', { title, 'aria-label': title, on: { click: onClick } }, icon(name));
 
 // ---------- top bar ----------
+// Left: project + undo/zoom. Centre: the three steps. Right: what the
+// current step needs (Continue / Generate / Print) and the plan.
+const STEPS = [[1, 'Choose Paper'], [2, 'Add Content'], [3, 'Handwriting & Print']];
+
+export function newProject() {
+  const p = S.createProject('filler-wide');
+  if (state.project) {
+    p.paper = JSON.parse(JSON.stringify(state.project.paper));
+    p.writer = JSON.parse(JSON.stringify(state.project.writer));
+  }
+  S.loadProject(p); // starts at Step 1
+}
+
 export function initTopbar() {
   const bar = document.getElementById('topbar');
+  const app = document.getElementById('app');
   const name = h('input.proj-name', { type: 'text', title: 'Project name', spellcheck: false });
   name.addEventListener('change', () => { state.project.name = name.value || 'Untitled'; S.commit(); });
   const fileBtn = h('button.text-btn', 'File');
   menu(fileBtn, () => [
-    { label: 'New project…', run: () => openPaperLibrary({ forNewProject: true }) },
-    { label: 'Paper library…', run: () => openPaperLibrary() },
+    { label: 'New project', run: newProject },
     { label: 'Open…', run: openProjectList },
     { label: 'Open from file…', run: openProjectFile },
     { label: 'Save a copy to file', run: saveProjectFile },
     '-',
     { label: 'Download PDF', run: () => exportPDF() },
     { label: 'Download transparent PNG', run: () => exportPNG() },
-    '-',
     { label: 'Print…', key: 'Ctrl P', run: openPrintPreview },
-    { label: 'Example print…', run: openExamplePrint },
+    '-',
     { label: 'Paper & printer calibration…', run: openCalibration },
   ]);
   const undo = tbtn('undo', 'Undo (Ctrl+Z)', S.undo);
@@ -72,58 +85,81 @@ export function initTopbar() {
     ];
   });
   const linesBtn = tbtn('ruled', 'Show / hide notebook lines (never printed)', () => { state.project.view.overlay = !state.project.view.overlay; S.commit(); });
-  const layoutBtn = h('button.text-btn.paper-btn', { title: 'AI Auto-Layout: paste text or add images and let it be arranged on the pages', on: { click: openAutoLayout } }, icon('feather', 16), h('span.tb-lbl', 'Auto-Layout'));
-  const paperBtn = h('button.text-btn.paper-btn', { title: 'Paper settings: choose, create or edit your notebook paper', on: { click: () => (state.paperEdit ? S.setPaperEdit(false) : openPaperLibrary()) } }, icon('grid', 16), h('span.tb-lbl', 'Paper Settings'));
+  const editTools = h('div.tb-group', h('div.tsep'), tbtn('zoom-out', 'Zoom out (Ctrl+−)', () => setZoom(state.zoom / 1.2)), zoomLbl, tbtn('zoom-in', 'Zoom in (Ctrl+=)', () => setZoom(state.zoom * 1.2)), tbtn('fit', 'Fit page (Ctrl+0)', zoomFit), h('div.tsep'), alignBtn, linesBtn);
 
-  // Floating bar over the canvas while editing the paper.
+  // Floating bar over the canvas while editing the paper on the page.
   const paperBar = h('div.paper-bar',
-    h('span', 'Editing paper — drag the first line, spacing line or margin'),
+    h('span', 'Editing paper — drag the first line, spacing line or margins'),
     tbtn('undo', 'Undo (Ctrl+Z)', S.undo),
     tbtn('redo', 'Redo (Ctrl+Shift+Z)', S.redo),
     h('button.btn.small.primary', { on: { click: () => S.setPaperEdit(false) } }, 'Done'));
-  document.getElementById('app').append(paperBar);
+  app.append(paperBar);
   bus.on('paperEdit', () => {
     paperBar.classList.toggle('show', state.paperEdit);
-    paperBtn.classList.toggle('on', state.paperEdit);
-    if (state.paperEdit) document.getElementById('app').classList.remove('no-right');
+    if (state.paperEdit) app.classList.remove('no-right');
   });
-  const status = h('span.save-status');
-  const leftT = tbtn('panel-left', 'Toggle left panel', () => document.getElementById('app').classList.toggle('no-left'));
-  const rightT = tbtn('panel-right', 'Toggle properties panel', () => document.getElementById('app').classList.toggle('no-right'));
 
-  // Two-stage workflow: edit in plain text, then approve with "Generate Handwriting".
-  const stageBox = h('div.stage-box');
-  const stageChip = h('span.stage-chip');
-  const updStage = () => {
-    const hwStage = state.project.stage === 'handwriting';
-    const stale = S.staleCount();
-    stageChip.textContent = hwStage ? 'Handwriting' : 'Editing';
-    stageChip.className = 'stage-chip ' + (hwStage ? 'hw' : 'edit');
-    stageChip.title = hwStage ? 'Showing generated handwriting' : 'Plain text while you arrange the page — nothing is handwritten yet';
-    stageBox.replaceChildren(stageChip, ...(hwStage
-      ? [
-        stale && h('button.btn.accent-ghost', { title: 'Text changed since it was generated', on: { click: () => S.generateHandwriting() } }, icon('feather', 15), `Regenerate changed (${stale})`),
-        h('button.btn.ghost', { title: 'Return to plain-text editing (your handwriting settings are kept)', on: { click: S.backToEditing } }, 'Back to editing'),
-      ]
-      : [h('button.btn.generate', { title: 'Approve the layout and turn all text into handwriting', on: { click: () => S.generateHandwriting() } }, icon('feather', 15), 'Generate Handwriting')]
-    ).filter(Boolean));
-  };
+  const stepper = h('nav.stepper-main', { 'aria-label': 'Steps' });
+  const actions = h('div.tb-actions');
+  const planBtn = h('button.plan-chip', { title: 'Plan (test mode)' });
+  menu(planBtn, () => [
+    { label: `${getPlan() === 'pro' ? '✓ ' : ''}Pro`, run: () => setPlan('pro') },
+    { label: `${getPlan() === 'basic' ? '✓ ' : ''}Basic`, run: () => setPlan('basic') },
+    '-',
+    { label: 'Test mode: switches features only. No accounts or payments.', disabled: true, run: () => {} },
+  ]);
+  const status = h('span.save-status');
+  const leftT = tbtn('panel-left', 'Toggle left panel', () => app.classList.toggle('no-left'));
+  const rightT = tbtn('panel-right', 'Toggle properties panel', () => app.classList.toggle('no-right'));
 
   bar.append(
     h('div.brand', icon('feather', 20)),
     name, fileBtn,
     h('div.tsep'), undo, redo,
-    h('div.tsep'), tbtn('zoom-out', 'Zoom out (Ctrl+−)', () => setZoom(state.zoom / 1.2)), zoomLbl, tbtn('zoom-in', 'Zoom in (Ctrl+=)', () => setZoom(state.zoom * 1.2)), tbtn('fit', 'Fit page (Ctrl+0)', zoomFit),
-    h('div.tsep'), alignBtn, linesBtn, paperBtn, layoutBtn,
+    editTools,
     h('div.grow'),
-    stageBox,
+    stepper,
     h('div.grow'),
     status,
-    tbtn('calibrate', 'Paper & printer calibration', openCalibration),
-    h('button.text-btn', { title: 'Print a sample page to test alignment on your paper', on: { click: openExamplePrint } }, 'Example Print'),
-    h('button.btn.primary.print-btn', { title: 'Print preview (Ctrl+P)', on: { click: openPrintPreview } }, icon('printer', 16), 'Print'),
-    h('div.tsep'), leftT, rightT,
+    actions,
+    planBtn,
+    h('div.tb-group.panel-toggles', h('div.tsep'), leftT, rightT),
   );
+
+  const renderStepper = () => {
+    const cur = state.project.step;
+    stepper.replaceChildren(...STEPS.flatMap(([n, label], i) => [
+      i ? h('span.step-arrow', '→') : null,
+      h('button.step-tab' + (n === cur ? '.on' : '') + (n < cur ? '.done' : ''), { on: { click: () => S.setStep(n) } }, h('b', String(n)), h('span.tb-lbl2', label)),
+    ]).filter(Boolean));
+  };
+
+  const renderActions = () => {
+    const step = state.project.step;
+    app.classList.remove('step-1', 'step-2', 'step-3');
+    app.classList.add('step-' + step);
+    editTools.hidden = step === 1;
+    alignBtn.hidden = linesBtn.hidden = step !== 2;
+    if (step === 1) {
+      actions.replaceChildren(h('button.btn.primary', { on: { click: () => S.setStep(2) } }, 'Continue to Editor →'));
+    } else if (step === 2) {
+      actions.replaceChildren(
+        h('button.btn.al-btn', { title: 'AI Auto-Layout: paste text or upload images and let it organize your pages', on: { click: () => (can('aiLayout') ? openAutoLayout() : upgradeDialog('aiLayout')) } }, icon('feather', 15), 'AI Auto-Layout', !isPro() && proBadge()),
+        h('button.btn.primary', { on: { click: () => S.setStep(3) } }, 'Continue to Handwriting →'));
+    } else {
+      const hwStage = state.project.stage === 'handwriting';
+      const stale = S.staleCount();
+      actions.replaceChildren(...[
+        hwStage
+          ? stale && h('button.btn.accent-ghost', { title: 'Text changed since it was generated', on: { click: () => S.generateHandwriting() } }, `Regenerate changed (${stale})`)
+          : h('button.btn.generate', { title: 'Turn all text into handwriting', on: { click: () => S.generateHandwriting() } }, icon('feather', 15), 'Generate Handwriting'),
+        hwStage && h('button.btn.ghost', { title: 'Show plain text again (handwriting settings are kept)', on: { click: S.backToEditing } }, 'Show typed text'),
+        h('button.text-btn', { title: 'Print a sample page to test alignment on your paper', on: { click: openExamplePrint } }, 'Example Print'),
+        h('button.btn.primary.print-btn', { title: 'Print or download (Ctrl+P)', on: { click: openPrintPreview } }, icon('printer', 16), 'Print'),
+      ].filter(Boolean));
+    }
+    planBtn.replaceChildren(isPro() ? h('span.pro-badge', 'PRO') : h('span.basic-badge', 'BASIC'), h('span.plan-note', 'test'));
+  };
 
   const upd = () => {
     if (!state.project) return;
@@ -131,16 +167,30 @@ export function initTopbar() {
     undo.disabled = !S.canUndo();
     redo.disabled = !S.canRedo();
     linesBtn.classList.toggle('on', !!state.project.view.overlay);
-    updStage();
+    renderStepper();
+    renderActions();
   };
-  bus.on('history', upd);
-  bus.on('project', upd);
+  for (const ev of ['history', 'project', 'step', 'stage', 'plan']) bus.on(ev, upd);
   bus.on('zoom', () => (zoomLbl.textContent = Math.round(state.zoom * 100) + '%'));
   bus.on('saved', () => {
     status.textContent = { saved: 'Saved', saving: 'Saving…', error: 'Not saved' }[state.saveStatus];
     status.className = 'save-status ' + state.saveStatus;
   });
   upd();
+}
+
+// ---------- Step 1 screen: the paper library ----------
+export function initStepView() {
+  const view = document.getElementById('stepview');
+  const render = () => {
+    if (state.project?.step !== 1) { view.replaceChildren(); return; }
+    view.replaceChildren(h('div.step1',
+      h('div.step1-head', h('h1', 'Choose your paper'), h('p.muted', 'Pick the notebook paper you will print on, or create one that matches it exactly.')),
+      libraryView({ embedded: true })));
+  };
+  for (const ev of ['step', 'project', 'styles']) bus.on(ev, render);
+  bus.on('change', () => { if (state.project?.step === 1) render(); });
+  render();
 }
 
 // ---------- left rail + panels ----------
@@ -166,7 +216,22 @@ export function initLeft() {
     b.dataset.tab = id;
     return b;
   });
-  const upd = () => btns.forEach((b) => b.classList.toggle('on', b.dataset.tab === tab && !app.classList.contains('no-left')));
+  // Step 2 is for content, Step 3 for handwriting: each shows its own tools.
+  const TABS_FOR = { 1: [], 2: ['insert', 'pages', 'layers'], 3: ['hand', 'pages'] };
+  const upd = () => {
+    const allowed = TABS_FOR[state.project?.step || 2];
+    btns.forEach((b) => {
+      b.hidden = !allowed.includes(b.dataset.tab);
+      b.classList.toggle('on', b.dataset.tab === tab && !app.classList.contains('no-left'));
+    });
+  };
+  bus.on('step', () => {
+    const allowed = TABS_FOR[state.project.step];
+    if (allowed.length && !allowed.includes(tab)) tab = allowed[0];
+    upd();
+    renderPanel();
+  });
+  bus.on('plan', () => renderPanel());
   rail.append(...btns);
   upd();
   renderPanel();
@@ -176,7 +241,7 @@ export function initLeft() {
   bus.on('selection', () => { if (tab === 'layers' || tab === 'hand') renderPanel(); });
   bus.on('tool', () => { if (tab === 'insert') renderPanel(); });
   bus.on('styles', () => { if (tab === 'hand') renderPanel(); });
-  bus.on('project', renderPanel);
+  bus.on('project', () => { bus.emit('step'); });
 }
 
 function renderPanel() {
@@ -202,7 +267,8 @@ function toolBtn(tool, ic, label, key) {
 
 function insertPanel() {
   return h('div.lp',
-    h('button.btn.block.al-cta', { title: 'Paste text or add images and have it arranged across the pages', on: { click: openAutoLayout } }, icon('feather', 16), 'AI Auto-Layout…'),
+    h('button.btn.block.al-cta', { title: 'Paste text or add images and have it arranged across the pages', on: { click: () => (can('aiLayout') ? openAutoLayout() : upgradeDialog('aiLayout')) } }, icon('feather', 16), 'AI Auto-Layout…', !isPro() && proBadge()),
+    h('p.muted.small', 'Typed text uses an Arial-style font. You’ll choose handwriting in Step 3.'),
     h('h3', 'Text'),
     h('div.tiles',
       tile('text', 'type', 'Text box', { title: 'A text box spanning the writing area' }),
@@ -242,33 +308,45 @@ function stylePreview(style) {
   return s;
 }
 
+// Pro with text selected: style just that text. Otherwise: the whole document.
 function applyStyle(id) {
-  const texts = S.selected().filter((o) => o.type === 'text');
-  if (texts.length) texts.forEach((o) => (o.hw.style = id));
-  else state.project.writer.defaults.style = id;
+  const st = PRESET_STYLES.find((s) => s.id === id);
+  if ((st?.premium || !st) && !can('premiumStyles')) return upgradeDialog(st ? 'premiumStyles' : 'customHandwriting');
+  const texts = can('perElement') ? S.selected().filter((o) => o.type === 'text') : [];
+  if (texts.length) texts.forEach((o) => { o.hw.style = id; o.hw.custom = true; });
+  else applyDocumentSetting({ style: id });
   S.commit();
   renderPanel();
 }
 
+// Document-wide handwriting change: new text plus every text box that hasn't
+// been given its own style (Pro per-element styles are left alone).
+export function applyDocumentSetting(patch) {
+  Object.assign(state.project.writer.defaults, patch);
+  for (const pg of state.project.pages) for (const o of pg.objects) if (o.type === 'text' && !o.hw.custom) Object.assign(o.hw, patch);
+}
+
 function handPanel() {
-  const texts = S.selected().filter((o) => o.type === 'text');
+  const texts = can('perElement') ? S.selected().filter((o) => o.type === 'text') : [];
   const current = texts[0]?.hw.style || state.project.writer.defaults.style;
-  const card = (st, mine) => h('div.style-card' + (st.id === current ? '.on' : ''),
-    h('button.style-main', { title: texts.length ? 'Apply to selected text' : 'Use for new text', on: { click: () => applyStyle(st.id) } },
-      stylePreview(st), h('span.style-name', st.name)),
+  const locked = (st) => (st.premium || !st.font) && !can('premiumStyles');
+  const card = (st, mine) => h('div.style-card' + (st.id === current ? '.on' : '') + (locked(st) ? '.locked' : ''),
+    h('button.style-main', { title: locked(st) ? 'Pro style' : texts.length ? 'Apply to selected text' : 'Use for the whole document', on: { click: () => applyStyle(st.id) } },
+      stylePreview(st), h('span.style-name', st.name, locked(st) && proBadge())),
     mine && h('div.style-actions',
       st.kind === 'glyphs' && st.glyphs && !Object.values(st.glyphs).some((v) => v.some((g) => g.mode === 'fill')) && h('button.icon-btn.tiny', { title: 'Edit letters', on: { click: () => openDrawStudio(st.id) } }, icon('pen', 14)),
       h('button.icon-btn.tiny', { title: 'Delete style', on: { click: async () => { if (await confirmDialog(`Delete “${st.name}”? Text using it falls back to Ballpoint.`)) deleteCustomStyle(st.id); } } }, icon('trash', 14))));
   const groups = [['neat', 'Neat'], ['casual', 'Casual'], ['rushed', 'Rushed'], ['cursive', 'Cursive']];
+  const pro = (fn) => () => (can('customHandwriting') ? fn() : upgradeDialog('customHandwriting'));
   return h('div.lp',
-    h('p.muted.small', texts.length ? `Click a style to apply it to ${texts.length > 1 ? texts.length + ' text boxes' : 'the selected text'}.` : 'Click a style to use it for new text. Select text first to change it.'),
+    h('p.muted.small', texts.length ? `Click a style to apply it to ${texts.length > 1 ? texts.length + ' text boxes' : 'the selected text'}.` : 'Click a style to use it for the whole document.' + (can('perElement') ? ' Select a text box first to style just that box.' : '')),
     ...groups.flatMap(([k, l]) => [h('h3', l), h('div.style-list', ...PRESET_STYLES.filter((s) => s.category === k).map((s) => card(s)))]),
-    h('h3', 'Your handwriting'),
+    h('h3', 'Your handwriting ', !can('customHandwriting') && proBadge()),
     h('div.style-list', ...customStyles().map((s) => card(s, true))),
-    h('div.btn-col',
-      h('button.btn.block', { on: { click: () => openDrawStudio() } }, icon('pen', 16), 'Draw your letters'),
-      h('button.btn.block', { on: { click: openScanStudio } }, icon('grid', 16), 'Scan a sample sheet'),
-      h('button.btn.block', { on: { click: uploadFontStyle } }, icon('upload', 16), 'Upload a handwriting font')),
+    h('div.btn-col' + (can('customHandwriting') ? '' : '.locked'),
+      h('button.btn.block', { on: { click: pro(() => openDrawStudio()) } }, icon('pen', 16), 'Draw your letters'),
+      h('button.btn.block', { on: { click: pro(openScanStudio) } }, icon('grid', 16), 'Scan a sample sheet'),
+      h('button.btn.block', { on: { click: pro(uploadFontStyle) } }, icon('upload', 16), 'Upload a handwriting font')),
   );
 }
 

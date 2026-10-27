@@ -18,6 +18,36 @@ python -m http.server 5173
 
 Open http://localhost:5173. Any static file server works. Opening `index.html` directly from disk won't work, because browsers block ES modules on `file://`. The app can also be hosted as-is on GitHub Pages.
 
+## Three steps
+
+The editor is organised as **1 Choose Paper → 2 Add Content → 3 Handwriting & Print**. You can move between steps at any time without losing work.
+
+1. **Choose Paper:** the paper library (saved papers and templates, create, edit, duplicate, rename, delete), then **Continue to Editor**.
+2. **Add Content:** the drag-and-drop editor. Text is typed in an Arial-style font (Arimo, which has the same letter widths as Arial), with pages, layers, shapes and snapping. **AI Auto-Layout** (Pro) sits in the toolbar.
+3. **Handwriting & Print:** handwriting styles and settings with a live sample, then **Generate Handwriting**, **Example Print** and **Print**. Leaving Step 3 shows typed text again; generated handwriting is kept.
+
+## Basic and Pro (test mode)
+
+The app has Basic and Pro feature levels, but **no accounts or payments yet**.
+- The plan is a local switch: the **PRO / BASIC** chip in the top bar. It defaults to Pro.
+- Basic users see Pro features with a PRO badge; clicking one opens a short upgrade dialog. In test mode, "Upgrade to Pro" just switches the browser to Pro.
+- Feature rules live in `js/plan.js` (`FEATURES`).
+
+| | Basic | Pro |
+|---|---|---|
+| Paper library, custom paper, manual editor, pages, Arial editing | ✓ | ✓ |
+| Handwriting styles | 6 | 12 + your own |
+| Ink | 5 preset colours, stroke thickness | all presets, any colour/HEX, 7 instruments, darkness, pressure, opacity |
+| Style controls | style, size, neatness | + writing speed, slant, word/letter spacing, natural variation |
+| Per-element handwriting | — (document-wide) | ✓ |
+| AI Auto-Layout, image-to-text | — | ✓ |
+| Print, PDF/PNG export | ✓ | ✓ |
+
+**Not built yet (needed before charging money):**
+- Sign-up and login.
+- Stripe checkout and billing management.
+- Server-side checks. Today every Pro feature runs in the browser, so these locks are for trying out the product, not protection.
+
 ## Workflow
 
 1. Pick your physical notebook paper (8 × 10½ in loose-leaf filler is the default), or measure your own and save it as a preset.
