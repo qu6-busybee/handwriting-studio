@@ -3,6 +3,7 @@
 import { h, round } from '../util.js';
 import { icon } from './icons.js';
 import { INKS } from '../state.js';
+import { fmtNum, fmtUnit, parseLength } from '../units.js';
 
 export const syncers = new Set();
 export function syncAll() {
@@ -49,42 +50,59 @@ export const UNITS = {
 export const getUnit = () => (UNITS[localStorage.getItem('hws.unit')] ? localStorage.getItem('hws.unit') : 'in');
 export const setUnit = (u) => localStorage.setItem('hws.unit', u);
 export const unitInfo = () => UNITS[getUnit()];
-// "0.344 in (8.73 mm)" — the mm value is shown alongside other units.
+// "1 1/2 in", "11/32 in", or "0.402 in (10.21 mm)" when not a clean fraction.
 export function fmtLen(mm) {
-  const u = getUnit(), I = UNITS[u];
-  const main = `${round(mm / I.k, I.dp)} ${I.label}`;
-  return u === 'mm' ? main : `${main} (${round(mm, 2)} mm)`;
+  const u = getUnit();
+  const clean = u !== 'in' || /^-?\d+( \d+\/\d+)?$|^-?\d+\/\d+$/.test(fmtNum(mm, 'in'));
+  return fmtUnit(mm, u, { withMm: !clean });
 }
 
-// unit 'mm' marks a length, shown in the user's chosen unit.
+// Length fields are text boxes so fractions can be typed: "1 1/2", "1/12",
+// "8.5", or with a unit ("21 mm"). unit 'mm' marks a length.
 export function numField(label, get, { step = 0.1, unit = 'mm', onChange, disabled }) {
   const len = unit === 'mm';
-  const I = len ? unitInfo() : { k: 1, dp: 1, step, label: unit };
-  const show = () => round(get() / I.k, I.dp);
-  const inp = h('input.num', { type: 'number', step: I.step, value: show(), disabled });
-  inp.addEventListener('change', () => { const v = parseFloat(inp.value); if (!isNaN(v)) onChange(v * I.k); });
-  const el = h('label.ctl.numf', h('span', label), h('div.numwrap', inp, h('span.unit', I.label)));
+  const u = getUnit();
+  const show = () => (len ? fmtNum(get(), u) : String(round(get(), 1)));
+  const inp = h('input.num', { type: 'text', inputmode: 'decimal', value: show(), disabled, title: len && u === 'in' ? 'Fractions work: 1 1/2, 3/8, 1/12' : null });
+  inp.addEventListener('change', () => {
+    const v = len ? parseLength(inp.value, u) : parseFloat(inp.value);
+    if (isNaN(v)) { inp.value = show(); return; }
+    onChange(v);
+    inp.value = show();
+  });
+  inp.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    const d = (len ? (u === 'in' ? 25.4 / 32 : u === 'cm' ? 1 : 0.1) : step) * (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1);
+    onChange(get() + d);
+    inp.value = show();
+  });
+  const el = h('label.ctl.numf', h('span', label), h('div.numwrap', inp, h('span.unit', len ? u : unit)));
   reg(el, () => { inp.value = show(); });
   return el;
 }
 
 // Slider for quick changes plus a typed value for precision, in display units.
-// min/max are millimetres; onInput receives millimetres.
+// min/max are millimetres; onInput receives millimetres. In inches the slider
+// moves in 1/64 in steps so values land on clean fractions.
 export function lenSlider(label, get, { min, max, onInput, onCommit, tip }) {
-  const I = unitInfo();
-  const show = (mm) => round(mm / I.k, I.dp);
-  const range = h('input', { type: 'range', min, max, step: (max - min) / 1000, value: get() });
-  const num = h('input.num', { type: 'text', value: show(get()) });
-  range.addEventListener('input', () => { num.value = show(+range.value); onInput(+range.value); });
+  const u = getUnit();
+  const show = (mm) => fmtNum(mm, u);
+  const step = u === 'in' ? 25.4 / 64 : u === 'cm' ? 0.1 : 0.05;
+  const range = h('input', { type: 'range', min, max, step, value: get() });
+  const num = h('input.num', { type: 'text', inputmode: 'decimal', value: show(get()), title: u === 'in' ? 'Fractions work: 1 1/2, 3/8, 1/12' : null });
+  const snapStep = (v) => (u === 'in' ? Math.round(v / step) * step : v);
+  range.addEventListener('input', () => { const v = snapStep(+range.value); num.value = show(v); onInput(v); });
   range.addEventListener('change', () => onCommit());
   num.addEventListener('change', () => {
-    const v = parseFloat(num.value);
+    const v = parseLength(num.value, u);
     if (isNaN(v)) { num.value = show(get()); return; }
-    onInput(v * I.k);
+    onInput(v);
     onCommit();
-    range.value = v * I.k;
+    range.value = v;
+    num.value = show(v);
   });
-  const el = h('div.ctl.slider', { title: tip || null }, h('label', label), range, h('div.numwrap.wide', num, h('span.unit', I.label)));
+  const el = h('div.ctl.slider', { title: tip || null }, h('label', label), range, h('div.numwrap.wide', num, h('span.unit', u)));
   reg(el, () => { range.value = get(); num.value = show(get()); });
   return el;
 }

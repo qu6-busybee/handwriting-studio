@@ -2,15 +2,27 @@
 import { svg, rng, gauss, smoothPath } from '../util.js';
 import { layoutText } from '../handwriting/engine.js';
 import { contentSig } from '../state.js';
+import { nearestLineIndex, lineAt, tiltAt, baselineOffsets } from '../paper.js';
 
 const textCache = new Map(); // `${id}|${clean}` -> { sig, out }
 
+// Per-line baseline offsets when the box sits on irregular ruling
+// (custom last line or individually adjusted lines).
+function rulingOffsets(o, paper) {
+  if (o.hw.followLines === false || o.hw.lineSpacing > 0) return null;
+  const base = o.y + paper.spacing * 0.74, cx = o.x + o.w / 2;
+  const i0 = nearestLineIndex(paper, base, cx);
+  if (Math.abs(lineAt(paper, i0) + tiltAt(paper, cx) - base) > paper.spacing * 0.2) return null;
+  return baselineOffsets(paper, i0);
+}
+
 export function textLayout(o, project, clean = false) {
-  const sig = JSON.stringify([o.text, o.hw, o.w, project.writer.seed, project.paper.spacing]);
+  const offsets = rulingOffsets(o, project.paper);
+  const sig = JSON.stringify([o.text, o.hw, o.w, project.writer.seed, project.paper.spacing, offsets]);
   const key = o.id + '|' + clean;
   const c = textCache.get(key);
   if (c && c.sig === sig) return c.out;
-  const out = layoutText(o, { writerSeed: project.writer.seed, paper: project.paper, clean });
+  const out = layoutText(o, { writerSeed: project.writer.seed, paper: project.paper, clean, offsets });
   if (out) textCache.set(key, { sig, out });
   return out;
 }

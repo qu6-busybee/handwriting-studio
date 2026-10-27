@@ -1,17 +1,18 @@
 // Notebook paper: presets, geometry and the non-printing ruling overlay.
 // All measurements are millimetres. See docs/PAPER.md for sources and notes.
 import { svg } from './util.js';
+import { sizeName } from './units.js';
 
 const IN = 25.4;
 
 // Typical values. Brands differ by a millimetre or two, which is why every
 // field is editable and paper can be adjusted directly on the canvas.
 export const PAPER_PRESETS = [
-  { id: 'filler-wide', name: 'Loose-leaf · Wide ruled', size: '8 × 10½ in', w: 8 * IN, h: 10.5 * IN, spacing: (11 / 32) * IN, firstLine: 1 * IN, lines: 27, margin: 1.25 * IN, rightLimit: 6, holes: true },
-  { id: 'filler-college', name: 'Loose-leaf · College ruled', size: '8 × 10½ in', w: 8 * IN, h: 10.5 * IN, spacing: (9 / 32) * IN, firstLine: 1 * IN, lines: 33, margin: 1.25 * IN, rightLimit: 6, holes: true },
-  { id: 'letter-wide', name: 'US Letter · Wide ruled', size: '8½ × 11 in', w: 8.5 * IN, h: 11 * IN, spacing: (11 / 32) * IN, firstLine: 1 * IN, lines: 29, margin: 1.25 * IN, rightLimit: 6, holes: true },
-  { id: 'letter-college', name: 'US Letter · College ruled', size: '8½ × 11 in', w: 8.5 * IN, h: 11 * IN, spacing: (9 / 32) * IN, firstLine: 1 * IN, lines: 35, margin: 1.25 * IN, rightLimit: 6, holes: true },
-  { id: 'letter-narrow', name: 'US Letter · Narrow ruled', size: '8½ × 11 in', w: 8.5 * IN, h: 11 * IN, spacing: 0.25 * IN, firstLine: 1 * IN, lines: 39, margin: 1.25 * IN, rightLimit: 6, holes: true },
+  { id: 'filler-wide', name: 'Loose-leaf · Wide ruled', size: '8 × 10 1/2 in', w: 8 * IN, h: 10.5 * IN, spacing: (11 / 32) * IN, firstLine: 1 * IN, lines: 27, margin: 1.25 * IN, rightLimit: 0.25 * IN, holes: true },
+  { id: 'filler-college', name: 'Loose-leaf · College ruled', size: '8 × 10 1/2 in', w: 8 * IN, h: 10.5 * IN, spacing: (9 / 32) * IN, firstLine: 1 * IN, lines: 33, margin: 1.25 * IN, rightLimit: 0.25 * IN, holes: true },
+  { id: 'letter-wide', name: 'US Letter · Wide ruled', size: '8 1/2 × 11 in', w: 8.5 * IN, h: 11 * IN, spacing: (11 / 32) * IN, firstLine: 1 * IN, lines: 29, margin: 1.25 * IN, rightLimit: 0.25 * IN, holes: true },
+  { id: 'letter-college', name: 'US Letter · College ruled', size: '8 1/2 × 11 in', w: 8.5 * IN, h: 11 * IN, spacing: (9 / 32) * IN, firstLine: 1 * IN, lines: 35, margin: 1.25 * IN, rightLimit: 0.25 * IN, holes: true },
+  { id: 'letter-narrow', name: 'US Letter · Narrow ruled', size: '8 1/2 × 11 in', w: 8.5 * IN, h: 11 * IN, spacing: 0.25 * IN, firstLine: 1 * IN, lines: 39, margin: 1.25 * IN, rightLimit: 0.25 * IN, holes: true },
   { id: 'a4-8mm', name: 'A4 · 8 mm feint & margin', size: '210 × 297 mm', w: 210, h: 297, spacing: 8, firstLine: 30, lines: 33, margin: 25, rightLimit: 8, holes: false },
   { id: 'a4-7mm', name: 'A4 · 7 mm feint & margin', size: '210 × 297 mm', w: 210, h: 297, spacing: 7, firstLine: 30, lines: 37, margin: 25, rightLimit: 8, holes: false },
   { id: 'a5-7mm', name: 'A5 · 7 mm notebook', size: '148 × 210 mm', w: 148, h: 210, spacing: 7, firstLine: 20, lines: 26, margin: 20, rightLimit: 6, holes: false },
@@ -31,9 +32,14 @@ export function normalizePaper(p) {
   p.marginStyle = { ...LOOK.marginStyle, ...(p.marginStyle || {}) };
   p.extraMargins ||= [];
   p.autoLines ??= false;
-  p.margins ||= { top: 6, bottom: 8, left: p.margin + 1.5, right: p.rightLimit ?? 6, linkLeft: true };
-  if (p.margins.linkLeft) p.margins.left = (p.marginStyle.show ? p.margin : 0) + 1.5;
+  p.margins ||= { top: 0.25 * IN, bottom: 0.3125 * IN, left: p.margin + IN / 16, right: p.rightLimit ?? 0.25 * IN, linkLeft: true };
+  if (p.margins.linkLeft) p.margins.left = (p.marginStyle.show ? p.margin : 0) + IN / 16; // text starts 1/16 in right of the margin
   p.rightLimit = p.margins.right;
+  // Real paper is rarely perfect at the bottom: the last line can have its
+  // own gap, length or be hidden, without touching the regular spacing.
+  p.last = { custom: false, gap: p.spacing, hidden: false, start: null, end: null, ...(p.last || {}) };
+  p.lineOverrides ||= {}; // { [lineIndex]: { dy, hidden } } for individual irregular lines
+  p.partials ||= []; // extra partial lines: [{ y, start, end }]
   return p;
 }
 
@@ -64,16 +70,36 @@ export function applyPreset(paper, id) {
 export function userPresets() {
   try { return JSON.parse(localStorage.getItem('hws.paperPresets') || '[]'); } catch { return []; }
 }
-const sizeLabel = (p) => `${(p.w / IN).toFixed(2)} × ${(p.h / IN).toFixed(2)} in`;
-export function saveUserPreset(name, paper) {
-  const id = 'user-' + Date.now().toString(36);
+const writePresets = (list) => localStorage.setItem('hws.paperPresets', JSON.stringify(list));
+const sizeLabel = (p) => sizeName(p.w, p.h);
+const record = (id, name, paper) => {
   const copy = JSON.parse(JSON.stringify(paper));
   delete copy.presetId;
-  localStorage.setItem('hws.paperPresets', JSON.stringify([...userPresets(), { id, name, size: sizeLabel(paper), w: paper.w, h: paper.h, paper: copy }]));
+  return { id, name, size: sizeLabel(paper), w: paper.w, h: paper.h, paper: copy, updated: Date.now() };
+};
+// Always creates a new preset (never overwrites an existing one).
+export function saveUserPreset(name, paper) {
+  const id = 'user-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+  writePresets([...userPresets(), record(id, name, paper)]);
   return id;
 }
+// Overwrites an existing saved preset (used when editing that preset).
+export function updateUserPreset(id, name, paper) {
+  writePresets(userPresets().map((p) => (p.id === id ? record(id, name, paper) : p)));
+}
+export function renameUserPreset(id, name) {
+  writePresets(userPresets().map((p) => (p.id === id ? { ...p, name } : p)));
+}
+export function duplicatePreset(id) {
+  const src = allPresets().find((p) => p.id === id);
+  if (!src) return null;
+  const names = new Set(userPresets().map((p) => p.name));
+  let name = `${src.name} copy`;
+  for (let k = 2; names.has(name); k++) name = `${src.name} copy ${k}`;
+  return saveUserPreset(name, paperFromPreset(id));
+}
 export function deleteUserPreset(id) {
-  localStorage.setItem('hws.paperPresets', JSON.stringify(userPresets().filter((p) => p.id !== id)));
+  writePresets(userPresets().filter((p) => p.id !== id));
 }
 export const allPresets = () => [...PAPER_PRESETS, ...userPresets()];
 
@@ -106,25 +132,79 @@ export function lineCount(paper) {
   return Math.max(0, Math.floor((bottom - paper.firstLine) / paper.spacing + 1e-6) + 1);
 }
 
-export function lineYs(paper) {
-  const ys = [];
+// Every ruled line with its final position (before tilt) and extent.
+// Regular lines follow firstLine + i × spacing; the last line may use its own
+// gap; any line may carry an individual offset or be hidden.
+export function rulingLines(paper) {
   const n = lineCount(paper);
+  const ls = paper.lineStyle || {}, last = paper.last || {};
+  const out = [];
   for (let i = 0; i < n; i++) {
-    const y = paper.firstLine + i * paper.spacing;
-    if (y > paper.h) break;
-    ys.push(y);
+    const isLast = i === n - 1;
+    let y = paper.firstLine + i * paper.spacing;
+    if (isLast && n >= 2 && last.custom) y = paper.firstLine + (n - 2) * paper.spacing + last.gap;
+    const ov = paper.lineOverrides?.[i];
+    if (ov?.dy) y += ov.dy;
+    if (y > paper.h + 1e-6) continue;
+    out.push({
+      i, y, last: isLast,
+      x1: Math.max(0, (isLast && last.start != null ? last.start : ls.start) || 0),
+      x2: Math.min(paper.w, (isLast && last.end != null ? last.end : ls.end) ?? paper.w),
+      hidden: !!ov?.hidden || (isLast && !!last.hidden),
+    });
   }
-  return ys;
+  (paper.partials || []).forEach((pl, k) => {
+    if (pl.y <= paper.h) out.push({ i: null, k, y: pl.y, x1: Math.max(0, pl.start ?? 0), x2: Math.min(paper.w, pl.end ?? paper.w / 2), partial: true });
+  });
+  return out;
 }
 
-// Nearest ruled line to y at horizontal position x. The rhythm continues past
-// the printed range so text above the first line still snaps consistently.
-export function nearestLineY(paper, y, x = paper.w / 2) {
-  const t = tiltAt(paper, x);
-  const i = Math.round((y - t - paper.firstLine) / paper.spacing);
-  return paper.firstLine + i * paper.spacing + t;
+export const lineYs = (paper) => rulingLines(paper).filter((l) => !l.hidden && !l.partial).map((l) => l.y);
+
+// Position of line i, continuing the regular rhythm beyond the printed lines
+// so text above the first or below the last line still snaps consistently.
+export function lineAt(paper, i) {
+  const n = lineCount(paper);
+  if (i < 0 || n === 0) return paper.firstLine + i * paper.spacing;
+  if (i < n) {
+    const l = rulingLines(paper).find((x) => x.i === i);
+    if (l) return l.y;
+    return paper.firstLine + i * paper.spacing;
+  }
+  return lineAt(paper, n - 1) + (i - n + 1) * paper.spacing;
 }
-export const lineIndexAt = (paper, y, x = paper.w / 2) => (y - tiltAt(paper, x) - paper.firstLine) / paper.spacing;
+
+export function nearestLineIndex(paper, y, x = paper.w / 2) {
+  const t = tiltAt(paper, x);
+  const g = Math.round((y - t - paper.firstLine) / paper.spacing);
+  let best = g, bd = Infinity;
+  for (let i = g - 2; i <= g + 2; i++) {
+    const d = Math.abs(lineAt(paper, i) + t - y);
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
+
+// Nearest ruled line to y at horizontal position x (honours irregular lines).
+export function nearestLineY(paper, y, x = paper.w / 2) {
+  return lineAt(paper, nearestLineIndex(paper, y, x)) + tiltAt(paper, x);
+}
+
+// Baseline offsets (mm) for a paragraph starting on line i0: how far each of
+// its lines sits from the regular rhythm. Empty when the paper is regular.
+export function baselineOffsets(paper, i0, count = 80) {
+  const irregular = paper.last?.custom || Object.keys(paper.lineOverrides || {}).length;
+  if (!irregular) return null;
+  const out = [];
+  for (let k = 0; k < count; k++) out.push(+(lineAt(paper, i0 + k) - (paper.firstLine + (i0 + k) * paper.spacing)).toFixed(4));
+  return out.some((v) => v) ? out : null;
+}
+
+// Distance from the last printed line to the bottom edge of the sheet.
+export function bottomGap(paper) {
+  const ls = rulingLines(paper).filter((l) => !l.partial);
+  return ls.length ? paper.h - ls[ls.length - 1].y : paper.h;
+}
 
 // Writing area between the left and right margins.
 export function writingBox(paper) {
@@ -139,10 +219,10 @@ export function paperOverlay(paper, { print = false } = {}) {
   const g = svg('g', { class: 'paper-overlay' });
   if (!print) g.append(svg('rect', { x: 0, y: 0, width: paper.w, height: paper.h, fill: paper.bg }));
   const ls = paper.lineStyle;
-  const x1 = Math.max(0, ls.start || 0), x2 = Math.min(paper.w, ls.end ?? paper.w);
   const lines = svg('g', { stroke: ls.color, 'stroke-width': ls.width, 'stroke-opacity': ls.opacity });
-  for (const y of lineYs(paper)) {
-    lines.append(svg('line', { x1, x2, y1: y + tiltAt(paper, x1), y2: y + tiltAt(paper, x2) }));
+  for (const l of rulingLines(paper)) {
+    if (l.hidden) continue;
+    lines.append(svg('line', { x1: l.x1, x2: l.x2, y1: l.y + tiltAt(paper, l.x1), y2: l.y + tiltAt(paper, l.x2) }));
   }
   g.append(lines);
   const ms = paper.marginStyle;

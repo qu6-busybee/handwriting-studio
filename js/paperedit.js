@@ -1,7 +1,7 @@
 // Paper changes as transactions: live updates while dragging or sliding,
 // one undo step on commit, and text that keeps its place on the ruling.
 import * as S from './state.js';
-import { writingBox, lineIndexAt, tiltAt, normalizePaper } from './paper.js';
+import { writingBox, nearestLineIndex, lineAt, tiltAt, normalizePaper } from './paper.js';
 
 let txn = null; // { paper: snapshot, objs: Map(id -> original geometry) }
 
@@ -48,10 +48,11 @@ function realign(old, neu, origs) {
       w = Math.max(10, w);
       if (align && o.hw.followLines !== false && !(o.hw.lineSpacing > 0)) {
         const cx0 = o0.x + o0.w / 2;
-        const f = lineIndexAt(old, o0.y + old.spacing * 0.74, cx0);
-        const idx = Math.round(f);
-        if (Math.abs(f - idx) < 0.2) {
-          y = neu.firstLine + idx * neu.spacing + tiltAt(neu, x + w / 2) - neu.spacing * 0.74;
+        const base = o0.y + old.spacing * 0.74;
+        const idx = nearestLineIndex(old, base, cx0);
+        // Only text that was actually sitting on that line moves with it.
+        if (Math.abs(lineAt(old, idx) + tiltAt(old, cx0) - base) < old.spacing * 0.2) {
+          y = lineAt(neu, idx) + tiltAt(neu, x + w / 2) - neu.spacing * 0.74;
           const oldA = old.lineStyle?.angle || 0;
           if (Math.abs(o0.rot - oldA) < 0.01) rot = neu.lineStyle.angle || 0;
         }

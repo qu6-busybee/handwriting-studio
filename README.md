@@ -68,7 +68,13 @@ The blue lines, red margin, paper colour and the dashed printable-area box are g
 
 **Paper, printing and export**
 - Presets for wide, college and narrow ruling (8 × 10½ in filler and Letter), A4 8 mm and 7 mm, and A5. Every measurement is editable, and a measure-across-many-lines helper sets precise spacing (see [docs/PAPER.md](docs/PAPER.md)).
-- **Paper settings and Edit Paper mode** (the **Paper** button in the toolbar):
+- **Paper library and Paper Studio** (the **Paper Settings** button, and every new project):
+  - **Library:** your saved papers, each with a preview, size and ruling, plus starting templates. Use, edit, duplicate, rename or delete a paper, or start from **+ Create New Paper**.
+  - **Studio:** a large live preview with rulers and a compact panel. Drag the first line, the spacing line, the last line, any single line or the red margin; live measurements follow the cursor. Click a line to adjust just that one. Drafts autosave and can be resumed, with undo/redo.
+  - **Last line / bottom edge:** set the gap above the last line or its distance to the bottom edge, hide it, shorten it, or add partial lines. The other lines keep their spacing.
+  - **Review & save:** check the exact paper and a summary, name it, then **Save Preset** or **Save & Use**. Creating a paper never overwrites an existing preset; editing a preset updates only that one.
+  - **Measurements:** inches show as clean fractions (8 1/2, 11/32, 1/12) and you can type fractions directly. Values that aren't exact fractions show as short decimals. Everything is stored in millimetres at full precision.
+- **Adjust on page** (from the library): the same settings applied live to the current project, with rulers and drag handles on the canvas:
   - **Size:** width and height in in, mm or cm; portrait or landscape; top, bottom, left and right writing margins; on-screen paper colour; the printer-safe edge.
   - **Horizontal lines:** spacing (slider or exact value), first-line position, line count (automatic or manual), thickness, colour, opacity, start and end positions, and a small angle for slightly crooked paper.
   - **Red margin:** position, thickness, colour, opacity, start and end, show or hide, plus any number of extra vertical lines.

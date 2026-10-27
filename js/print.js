@@ -2,6 +2,7 @@
 import { h, svg, uid, download, toast, round, pickFile, readFile, hash, SVG_NS } from './util.js';
 import { paperOverlay, lineYs, lineCount, tiltAt, PAPER_PRESETS, applyPreset, paperLabel, writingBox, userPresets, saveUserPreset, deleteUserPreset } from './paper.js';
 import { UNITS } from './ui/controls.js';
+import { fmtNum, parseLength } from './units.js';
 import { commitPaper } from './paperedit.js';
 import { inkDefs, pageContent } from './editor/render.js';
 import { ensureProvider, embedStyles, importStyles } from './handwriting/styles.js';
@@ -349,7 +350,7 @@ export function seg(items, value, onChange) {
 }
 
 // ---------- calibration ----------
-const A = 20; // crosshair inset (mm)
+const A = 19.05; // crosshair inset: exactly 3/4 in, so expected values read cleanly on an inch ruler
 
 function testSheet(profile, corrected) {
   const paper = state.project.paper;
@@ -397,9 +398,13 @@ export function openCalibration() {
   let prof = { ...activeProfile() };
   let unit = UNITS[localStorage.getItem('hws.unit')] ? localStorage.getItem('hws.unit') : 'in';
   const U = () => UNITS[unit].k;
-  const show = (mm) => round(mm / U(), unit === 'mm' ? 2 : 4);
-
-  const num = (val, on, step) => h('input', { type: 'number', step: step || (unit === 'in' ? 0.01 : 0.1), value: val, on: { change: (e) => on(parseFloat(e.target.value)) } });
+  // Display strings use clean fractions in inches ("1 1/4"); callbacks get
+  // numbers in the chosen unit. Typed fractions are accepted.
+  const show = (mm) => fmtNum(mm, unit);
+  const num = (val, on, step) => h('input', {
+    type: 'text', inputmode: 'decimal', value: val,
+    on: { change: (e) => on(step === 1 ? parseFloat(e.target.value) : parseLength(e.target.value, unit) / U()) },
+  });
 
   const body = h('div.calib');
   const render = () => {
@@ -421,7 +426,7 @@ export function openCalibration() {
     const isUser = paper.presetId.startsWith('user-');
 
     // "measure my paper": first and last line + count -> spacing
-    const meas = { first: show(paper.firstLine), last: show(paper.firstLine + (lineCount(paper) - 1) * paper.spacing), count: lineCount(paper) };
+    const meas = { first: paper.firstLine / U(), last: (paper.firstLine + (lineCount(paper) - 1) * paper.spacing) / U(), count: lineCount(paper) };
 
     const measured = { ax: '', ay: '', bx: '', by: '' };
 
@@ -451,8 +456,8 @@ export function openCalibration() {
         h('details.sub', h('summary', 'Measure spacing precisely (recommended)'),
           h('p.muted', 'Measuring across many lines averages out ruler error. Measure from the top edge of the sheet to the first and last blue lines.'),
           h('div.grid3',
-            fld('Top → first line', num(meas.first, (v) => (meas.first = v))),
-            fld('Top → last line', num(meas.last, (v) => (meas.last = v))),
+            fld('Top → first line', num(show(meas.first * U()), (v) => (meas.first = v))),
+            fld('Top → last line', num(show(meas.last * U()), (v) => (meas.last = v))),
             fld('Lines counted', num(meas.count, (v) => (meas.count = v), 1))),
           h('button.btn.small', { on: { click: () => {
             if (meas.count < 2 || !(meas.last > meas.first)) return toast('Check the measurements');
@@ -586,23 +591,3 @@ export async function openProjectList() {
   m.foot.append(h('button.btn', { on: { click: () => { m.close(); openProjectFile(); } } }, 'Open from file…'));
 }
 
-export function openNewProject() {
-  const m = openModal('New project');
-  // Default: the same paper (including any custom settings) as this project.
-  let preset = state.project ? 'same' : 'filler-wide';
-  const option = (id, title, sub) => h('label.paper-option',
-    h('input', { type: 'radio', name: 'paper', value: id, checked: id === preset, on: { change: () => (preset = id) } }),
-    h('span', h('strong', title), h('span.muted', sub)));
-  const opts = h('div.paper-options',
-    state.project && option('same', 'Same paper as this project', paperLabel(state.project.paper)),
-    ...PAPER_PRESETS.map((p) => option(p.id, p.name, `${p.size} · ${round(p.spacing, 1)} mm lines`)),
-    ...userPresets().map((p) => option(p.id, p.name, `Saved · ${p.size}`)));
-  m.body.append(opts);
-  m.foot.append(h('button.btn.primary', { on: { click: () => {
-    const p = S.createProject(preset === 'same' ? 'filler-wide' : preset);
-    if (preset === 'same') p.paper = JSON.parse(JSON.stringify(state.project.paper));
-    if (state.project) { p.writer = JSON.parse(JSON.stringify(state.project.writer)); }
-    S.loadProject(p);
-    m.close();
-  } } }, 'Create'));
-}

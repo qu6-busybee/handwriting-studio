@@ -8,8 +8,9 @@ import { paperOverlay } from '../paper.js';
 import { layoutText } from '../handwriting/engine.js';
 import { PRESET_STYLES, customStyles, ensureProvider, deleteCustomStyle } from '../handwriting/styles.js';
 import { openDrawStudio, openScanStudio, uploadFontStyle } from '../handwriting/capture.js';
-import { openPrintPreview, openCalibration, openExamplePrint, exportPDF, exportPNG, saveProjectFile, openProjectFile, openProjectList, openNewProject } from '../print.js';
+import { openPrintPreview, openCalibration, openExamplePrint, exportPDF, exportPNG, saveProjectFile, openProjectFile, openProjectList } from '../print.js';
 import { alignButtons, align } from './props.js';
+import { openPaperLibrary } from './paperstudio.js';
 import { confirmDialog } from './modal.js';
 
 const { state, bus } = S;
@@ -39,7 +40,8 @@ export function initTopbar() {
   name.addEventListener('change', () => { state.project.name = name.value || 'Untitled'; S.commit(); });
   const fileBtn = h('button.text-btn', 'File');
   menu(fileBtn, () => [
-    { label: 'New project…', run: openNewProject },
+    { label: 'New project…', run: () => openPaperLibrary({ forNewProject: true }) },
+    { label: 'Paper library…', run: () => openPaperLibrary() },
     { label: 'Open…', run: openProjectList },
     { label: 'Open from file…', run: openProjectFile },
     { label: 'Save a copy to file', run: saveProjectFile },
@@ -69,7 +71,7 @@ export function initTopbar() {
     ];
   });
   const linesBtn = tbtn('ruled', 'Show / hide notebook lines (never printed)', () => { state.project.view.overlay = !state.project.view.overlay; S.commit(); });
-  const paperBtn = h('button.text-btn.paper-btn', { title: 'Paper settings: size, lines, margins (edit on the page)', on: { click: () => S.setPaperEdit(!state.paperEdit) } }, icon('grid', 16), 'Paper');
+  const paperBtn = h('button.text-btn.paper-btn', { title: 'Paper settings: choose, create or edit your notebook paper', on: { click: () => (state.paperEdit ? S.setPaperEdit(false) : openPaperLibrary()) } }, icon('grid', 16), 'Paper Settings');
 
   // Floating bar over the canvas while editing the paper.
   const paperBar = h('div.paper-bar',

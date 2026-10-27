@@ -1,7 +1,7 @@
 // The editing surface: page SVG, selection handles, pointer tools, snapping,
 // zoom, inline text editing and keyboard shortcuts.
 import { svg, h, PX_PER_MM, clamp, simplify, uid, isTyping, toast } from '../util.js';
-import { paperOverlay, nearestLineY, writingBox, lineYs, tiltAt } from '../paper.js';
+import { paperOverlay, nearestLineY, writingBox, tiltAt, rulingLines, lineCount, lineAt } from '../paper.js';
 import { inkDefs, objectElement, objTransform, pageContent } from './render.js';
 import * as S from '../state.js';
 import { printableRect, activeProfile } from '../print.js';
@@ -140,7 +140,6 @@ const hideMeasure = () => measureEl && (measureEl.style.display = 'none');
 // any extra vertical lines. Wide invisible strokes make them easy to grab.
 function drawPaperHandles() {
   const p = paper(), k = 1 / scale();
-  const ys = lineYs(p);
   const grab = (attrs, name) => uiG.append(svg('line', { ...attrs, class: 'p-hit', 'data-handle': name, 'stroke-width': 10 * k, style: `cursor:${attrs.x1 === attrs.x2 ? 'ew' : 'ns'}-resize` }));
   const chip = (x, y, text, cls, name) => {
     const g = svg('g', { class: 'p-chip ' + cls, 'data-handle': name, transform: `translate(${x} ${y}) scale(${k})` });
@@ -150,20 +149,21 @@ function drawPaperHandles() {
     g.append(t);
     uiG.append(g);
   };
-  const lx1 = p.lineStyle.start || 0, lx2 = p.lineStyle.end ?? p.w;
-  if (ys.length) {
-    const y0 = ys[0];
-    grab({ x1: lx1, x2: lx2, y1: y0 + tiltAt(p, lx1), y2: y0 + tiltAt(p, lx2) }, 'p-first');
-    uiG.append(svg('line', { class: 'p-hl first', x1: lx1, x2: lx2, y1: y0 + tiltAt(p, lx1), y2: y0 + tiltAt(p, lx2), 'stroke-width': 1.5 * k }));
-    chip(p.w - 70 * k, y0 + tiltAt(p, p.w - 40 * k), 'First line', 'first', 'p-first');
-  }
-  const ki = Math.min(ys.length - 1, 5);
-  if (ki >= 1) {
-    const yk = ys[ki];
-    grab({ x1: lx1, x2: lx2, y1: yk + tiltAt(p, lx1), y2: yk + tiltAt(p, lx2) }, 'p-spacing');
-    uiG.append(svg('line', { class: 'p-hl spacing', x1: lx1, x2: lx2, y1: yk + tiltAt(p, lx1), y2: yk + tiltAt(p, lx2), 'stroke-width': 1.5 * k }));
-    chip(p.w - 70 * k, yk + tiltAt(p, p.w - 40 * k), 'Spacing', 'spacing', 'p-spacing');
-  }
+  const lines = rulingLines(p).filter((l) => !l.partial);
+  const n = lineCount(p);
+  const special = (i, name, label, cls) => {
+    const l = lines.find((x) => x.i === i);
+    if (!l) return;
+    const at = (x) => l.y + tiltAt(p, x);
+    grab({ x1: l.x1, x2: l.x2, y1: at(l.x1), y2: at(l.x2) }, name);
+    uiG.append(svg('line', { class: 'p-hl ' + cls, x1: l.x1, x2: l.x2, y1: at(l.x1), y2: at(l.x2), 'stroke-width': 1.5 * k }));
+    chip(p.w - 70 * k, at(p.w - 40 * k), label, cls, name);
+  };
+  special(0, 'p-first', 'First line', 'first');
+  const ki = Math.min(n - 2, 5);
+  if (ki >= 1) special(ki, 'p-spacing', 'Spacing', 'spacing');
+  // The last line moves on its own; the other lines keep their spacing.
+  if (n >= 2) special(n - 1, 'p-last', 'Last line', 'last');
   const vgrab = (x, name, label) => {
     grab({ x1: x, x2: x, y1: 0, y2: p.h }, name);
     chip(x + 3 * k, 14 * k + (name === 'p-margin' ? 0 : 22 * k), label, 'margin', name);
@@ -174,8 +174,16 @@ function drawPaperHandles() {
 
 function paperDrag(d, pt, e) {
   const p = paper();
-  const snap = (v) => (e.shiftKey ? v : Math.round(v * 20) / 20); // 0.05 mm steps
-  if (d.handle === 'p-first') {
+  // Inches snap to 1/64 in (clean fractions); metric to 0.05 mm. Shift = free.
+  const st = getUnit() === 'in' ? 25.4 / 64 : 0.05;
+  const snap = (v) => (e.shiftKey ? v : Math.round(v / st) * st);
+  if (d.handle === 'p-last') {
+    const n = lineCount(p);
+    const prev = lineAt(p, n - 2);
+    const v = snap(clamp(pt.y - tiltAt(p, pt.x) - prev, 0.5, p.h - prev));
+    livePaper((pp) => { pp.last.custom = true; pp.last.gap = v; });
+    showMeasure(e, `Last line: ${fmtLen(v)} below the line above · ${fmtLen(p.h - prev - v)} from bottom`);
+  } else if (d.handle === 'p-first') {
     const v = snap(clamp(pt.y - tiltAt(p, pt.x), 0, p.h));
     livePaper((pp) => { pp.firstLine = v; });
     showMeasure(e, `First line: ${fmtLen(v)} from top`);
@@ -293,7 +301,7 @@ function onDown(e) {
     // Content is locked while the paper is being edited.
     const ph = e.target.closest('[data-handle]')?.dataset.handle;
     if (ph?.startsWith('p-')) {
-      drag = { type: 'paper', handle: ph, k: Math.min(lineYs(paper()).length - 1, 5) };
+      drag = { type: 'paper', handle: ph, k: Math.min(lineCount(paper()) - 2, 5) };
       e.preventDefault();
     }
     return;

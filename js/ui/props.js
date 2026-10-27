@@ -9,6 +9,7 @@ import { openCalibration } from '../print.js';
 import { aabb, startEditing } from '../editor/canvas.js';
 import { icon } from './icons.js';
 import { paperPanel } from './paperpanel.js';
+import { openPaperLibrary } from './paperstudio.js';
 import { commitPaper } from '../paperedit.js';
 import { applyPreset } from '../paper.js';
 
@@ -45,7 +46,7 @@ function build() {
   syncers.clear();
   const sel = S.selected();
   const body = h('div.props');
-  if (state.paperEdit) body.append(...paperPanel(build));
+  if (state.paperEdit) body.append(...paperPanel(build, openPaperLibrary));
   else if (!sel.length) body.append(...pageProps());
   else if (sel.length === 1) body.append(...objectProps(sel[0]));
   else body.append(...multiProps(sel));
@@ -139,7 +140,7 @@ function pageProps() {
       toggle('Snap text to lines', () => p.view.snapLines !== false, (v) => { p.view.snapLines = v; done(); }),
       segmented('Units', getUnit, [['in', 'in'], ['mm', 'mm'], ['cm', 'cm']], (v) => { setUnit(v); build(); }),
       h('div.btn-row',
-        h('button.btn', { on: { click: () => S.setPaperEdit(true) } }, 'Paper settings…'),
+        h('button.btn', { on: { click: () => openPaperLibrary() } }, 'Paper settings…'),
         h('button.btn', { on: { click: openCalibration } }, 'Calibrate printer…')),
     ]),
     section('Writer', [

@@ -73,7 +73,9 @@ const fmt = (n) => (Math.round(n * 100) / 100).toString();
 // clean = true is the editing stage: a plain digital font with no handwriting
 // effects. Both stages wrap with the clean font's metrics, so generating
 // handwriting never changes the line breaks the user approved.
-export function layoutText(obj, { writerSeed, paper, clean = false }) {
+// offsets[k]: extra mm for the k-th line of the box, when the paper's lines
+// are irregular (custom last line, individually adjusted lines).
+export function layoutText(obj, { writerSeed, paper, clean = false, offsets = null }) {
   const hw = obj.hw;
   const cp = cleanProvider();
   const prov = clean ? cp : getProvider(hw.style);
@@ -159,7 +161,7 @@ export function layoutText(obj, { writerSeed, paper, clean = false }) {
   const spans = []; // for strike/underline: {line, x0, x1, strike, under, baseY}
 
   lines.forEach((line, li) => {
-    const baseY = firstBaseline + li * ls;
+    const baseY = firstBaseline + li * ls + (offsets?.[li] || 0);
     const tilt = Math.tan(((gauss(r) * manner.tilt * mess) * Math.PI) / 180);
     const x0 = Math.abs(gauss(r)) * manner.start * mess * 0.8;
     let x = x0;
@@ -230,7 +232,7 @@ export function layoutText(obj, { writerSeed, paper, clean = false }) {
   });
 
   const marks = buildMarks(spans, size, hw, r, clean);
-  const height = firstBaseline + (lines.length - 1) * ls + ls * 0.36;
+  const height = firstBaseline + (lines.length - 1) * ls + (offsets?.[lines.length - 1] || 0) + ls * 0.36;
   return { paths, marks, height, firstBaseline, lineCount: lines.length };
 }
 
