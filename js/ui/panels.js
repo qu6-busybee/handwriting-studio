@@ -11,6 +11,7 @@ import { openDrawStudio, openScanStudio, uploadFontStyle } from '../handwriting/
 import { openPrintPreview, openCalibration, openExamplePrint, exportPDF, exportPNG, saveProjectFile, openProjectFile, openProjectList } from '../print.js';
 import { alignButtons, align } from './props.js';
 import { openPaperLibrary } from './paperstudio.js';
+import { openAutoLayout } from '../layout/autolayout.js';
 import { confirmDialog } from './modal.js';
 
 const { state, bus } = S;
@@ -71,7 +72,8 @@ export function initTopbar() {
     ];
   });
   const linesBtn = tbtn('ruled', 'Show / hide notebook lines (never printed)', () => { state.project.view.overlay = !state.project.view.overlay; S.commit(); });
-  const paperBtn = h('button.text-btn.paper-btn', { title: 'Paper settings: choose, create or edit your notebook paper', on: { click: () => (state.paperEdit ? S.setPaperEdit(false) : openPaperLibrary()) } }, icon('grid', 16), 'Paper Settings');
+  const layoutBtn = h('button.text-btn.paper-btn', { title: 'AI Auto-Layout: paste text or add images and let it be arranged on the pages', on: { click: openAutoLayout } }, icon('feather', 16), h('span.tb-lbl', 'Auto-Layout'));
+  const paperBtn = h('button.text-btn.paper-btn', { title: 'Paper settings: choose, create or edit your notebook paper', on: { click: () => (state.paperEdit ? S.setPaperEdit(false) : openPaperLibrary()) } }, icon('grid', 16), h('span.tb-lbl', 'Paper Settings'));
 
   // Floating bar over the canvas while editing the paper.
   const paperBar = h('div.paper-bar',
@@ -112,7 +114,7 @@ export function initTopbar() {
     name, fileBtn,
     h('div.tsep'), undo, redo,
     h('div.tsep'), tbtn('zoom-out', 'Zoom out (Ctrl+−)', () => setZoom(state.zoom / 1.2)), zoomLbl, tbtn('zoom-in', 'Zoom in (Ctrl+=)', () => setZoom(state.zoom * 1.2)), tbtn('fit', 'Fit page (Ctrl+0)', zoomFit),
-    h('div.tsep'), alignBtn, linesBtn, paperBtn,
+    h('div.tsep'), alignBtn, linesBtn, paperBtn, layoutBtn,
     h('div.grow'),
     stageBox,
     h('div.grow'),
@@ -200,6 +202,7 @@ function toolBtn(tool, ic, label, key) {
 
 function insertPanel() {
   return h('div.lp',
+    h('button.btn.block.al-cta', { title: 'Paste text or add images and have it arranged across the pages', on: { click: openAutoLayout } }, icon('feather', 16), 'AI Auto-Layout…'),
     h('h3', 'Text'),
     h('div.tiles',
       tile('text', 'type', 'Text box', { title: 'A text box spanning the writing area' }),

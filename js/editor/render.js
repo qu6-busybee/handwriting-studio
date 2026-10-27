@@ -3,6 +3,7 @@ import { svg, rng, gauss, smoothPath } from '../util.js';
 import { layoutText } from '../handwriting/engine.js';
 import { contentSig } from '../state.js';
 import { nearestLineIndex, lineAt, tiltAt, baselineOffsets } from '../paper.js';
+import { penLook, inkFilter } from '../handwriting/pens.js';
 
 const textCache = new Map(); // `${id}|${clean}` -> { sig, out }
 
@@ -37,34 +38,12 @@ export function textIsHandwritten(o, ctx) {
   return stageOn(ctx) && !!o.gen && o.gen.sig === contentSig(o);
 }
 
-// Ink textures in mm units. Ballpoint: rough edges and patchy density.
-// Gel: smooth, saturated. Pencil: graphite grain that breaks up the stroke.
-export function inkDefs() {
-  const attrs = (id) => ({ id, x: '-6%', y: '-25%', width: '112%', height: '150%', primitiveUnits: 'userSpaceOnUse', 'color-interpolation-filters': 'sRGB' });
-  const ball = svg('filter', attrs('hw-ink'),
-    svg('feTurbulence', { type: 'fractalNoise', baseFrequency: '1.7', numOctaves: '2', seed: '4', result: 'grain' }),
-    svg('feDisplacementMap', { in: 'SourceGraphic', in2: 'grain', scale: '0.14', xChannelSelector: 'R', yChannelSelector: 'G', result: 'rough' }),
-    svg('feTurbulence', { type: 'fractalNoise', baseFrequency: '0.6', numOctaves: '2', seed: '11', result: 'den' }),
-    svg('feColorMatrix', { in: 'den', type: 'matrix', values: '0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -0.7 1.22', result: 'denA' }),
-    svg('feComposite', { in: 'rough', in2: 'denA', operator: 'in' }),
-  );
-  const gel = svg('filter', attrs('hw-gel'),
-    svg('feTurbulence', { type: 'fractalNoise', baseFrequency: '1.2', numOctaves: '1', seed: '6', result: 'grain' }),
-    svg('feDisplacementMap', { in: 'SourceGraphic', in2: 'grain', scale: '0.08', xChannelSelector: 'R', yChannelSelector: 'G' }),
-  );
-  const pencil = svg('filter', attrs('hw-pencil'),
-    svg('feTurbulence', { type: 'fractalNoise', baseFrequency: '1.4', numOctaves: '2', seed: '9', result: 'edge' }),
-    svg('feDisplacementMap', { in: 'SourceGraphic', in2: 'edge', scale: '0.12', xChannelSelector: 'R', yChannelSelector: 'G', result: 'rough' }),
-    svg('feTurbulence', { type: 'fractalNoise', baseFrequency: '6', numOctaves: '2', seed: '3', result: 'grain' }),
-    svg('feColorMatrix', { in: 'grain', type: 'matrix', values: '0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.5 1.62', result: 'grainA' }),
-    svg('feTurbulence', { type: 'fractalNoise', baseFrequency: '0.45', numOctaves: '1', seed: '21', result: 'press' }),
-    svg('feColorMatrix', { in: 'press', type: 'matrix', values: '0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -0.6 1.25', result: 'pressA' }),
-    svg('feComposite', { in: 'grainA', in2: 'pressA', operator: 'arithmetic', k1: '1', k2: '0', k3: '0', k4: '0', result: 'mask' }),
-    svg('feComposite', { in: 'rough', in2: 'mask', operator: 'in' }),
-  );
-  return svg('defs', {}, ball, gel, pencil);
-}
-const FILTER = { ballpoint: 'hw-ink', gel: 'hw-gel', pencil: 'hw-pencil' };
+// Texture filters are now built per object (see pens.js); this stays so
+// callers that prepend shared defs keep working.
+export const inkDefs = () => svg('defs', {});
+
+// Pen settings for shapes and drawings (they use the same instruments).
+const shapeHw = (o) => ({ pen: o.pen || 'ballpoint', texture: o.texture, pressure: o.pressure, darkness: o.darkness, opacity: 1, softness: o.softness, weight: 0, penWidth: o.strokeWidth });
 
 export const objTransform = (o) =>
   `translate(${o.x + o.w / 2} ${o.y + o.h / 2}) rotate(${o.rot || 0}) translate(${-o.w / 2} ${-o.h / 2})`;
@@ -83,12 +62,18 @@ export function objectElement(o, ctx) {
   inner.append(svg('rect', { width: o.w, height: o.h, fill: 'none' }));
   // Ink effects appear only after "Generate Handwriting".
   const on = stageOn(ctx);
-  const pen = o.type === 'text' ? o.hw.pen || 'ballpoint' : o.pen || 'ballpoint';
-  const textured = o.type === 'text' ? hwText && o.hw.texture !== false : on && o.type !== 'image' && o.texture !== false;
-  if (textured) inner.setAttribute('filter', `url(#${FILTER[pen] || 'hw-ink'})`);
-  if (o.type === 'text') drawText(inner, o, ctx, hwText);
-  else if (o.type === 'shape') drawShape(inner, o, on);
-  else if (o.type === 'path') drawPath(inner, o);
+  const hwSet = o.type === 'text' ? o.hw : shapeHw(o);
+  const look = penLook(hwSet);
+  const generated = o.type === 'text' ? hwText : on && o.type !== 'image';
+  if (generated && look.texture > 0 && !(o.type === 'path' && o.highlighter)) {
+    const fid = 'f-' + o.id;
+    g.append(svg('defs', {}, inkFilter(fid, hwSet.pen, look.texture, look.soft)));
+    inner.setAttribute('filter', `url(#${fid})`);
+  }
+  if (generated && o.type !== 'image' && look.opacity < 1) inner.setAttribute('opacity', look.opacity.toFixed(3));
+  if (o.type === 'text') drawText(inner, o, ctx, hwText, look);
+  else if (o.type === 'shape') drawShape(inner, o, on, generated ? look : null);
+  else if (o.type === 'path') drawPath(inner, o, generated && !o.highlighter ? look : null);
   else if (o.type === 'image') {
     const href = project.assets[o.asset] || '';
     inner.append(svg('image', { href, width: o.w, height: o.h, preserveAspectRatio: 'none' }));
@@ -97,7 +82,7 @@ export function objectElement(o, ctx) {
   return g;
 }
 
-function drawText(g, o, { project, editor }, handwritten) {
+function drawText(g, o, { project, editor }, handwritten, look) {
   const lay = textLayout(o, project, !handwritten);
   const hw = o.hw;
   if (editor && project.stage === 'handwriting' && !handwritten && o.text?.trim()) {
@@ -116,17 +101,19 @@ function drawText(g, o, { project, editor }, handwritten) {
     }
     return;
   }
-  // Editing stage: crisp text in the ink colour, no pen effects.
-  const pencil = handwritten && hw.pen === 'pencil';
-  const baseOp = pencil ? 0.94 : 1;
-  const weight = handwritten ? hw.weight + (pencil ? 0.06 : 0) : 0;
+  // Editing stage: crisp text in the ink colour(s), no pen effects.
+  // Handwritten: pen weight, pressure, darkness and per-word colours.
+  const colorOf = (c) => (handwritten ? look.color(c || hw.color) : c || hw.color);
+  const weight = handwritten ? look.weight : 0;
+  const penW = handwritten ? look.penWidth : hw.penWidth;
   for (const p of lay.paths) {
-    const op = p.op * baseOp, wt = weight * (p.wt || 1);
-    if (p.fill) g.append(svg('path', { d: p.fill, fill: hw.color, 'fill-opacity': op, stroke: wt > 0 ? hw.color : null, 'stroke-width': wt || null, 'stroke-opacity': op, 'stroke-linejoin': 'round' }));
-    if (p.stroke) g.append(svg('path', { d: p.stroke, fill: 'none', stroke: hw.color, 'stroke-width': hw.penWidth * (p.wt || 1), 'stroke-opacity': op, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+    const col = colorOf(p.color);
+    const op = p.op, wt = weight * (p.wt || 1);
+    if (p.fill) g.append(svg('path', { d: p.fill, fill: col, 'fill-opacity': op, stroke: wt > 0 ? col : null, 'stroke-width': wt || null, 'stroke-opacity': op, 'stroke-linejoin': 'round' }));
+    if (p.stroke) g.append(svg('path', { d: p.stroke, fill: 'none', stroke: col, 'stroke-width': penW * (p.wt || 1), 'stroke-opacity': op, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
   }
   for (const m of lay.marks) {
-    g.append(svg('path', { d: m.d, fill: 'none', stroke: hw.color, 'stroke-width': m.w, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-opacity': 0.92 * baseOp }));
+    g.append(svg('path', { d: m.d, fill: 'none', stroke: colorOf(m.color), 'stroke-width': handwritten ? m.w * (penW / (hw.penWidth || 0.42)) : m.w, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-opacity': 0.92 }));
   }
 }
 
@@ -207,27 +194,30 @@ export function shapePath(o, generated = true) {
   }
 }
 
-function drawShape(g, o, generated) {
+// Stroke width for shapes/drawings: pressure and pen type scale it.
+const penStroke = (o, look) => (look ? o.strokeWidth * (look.penWidth / (o.strokeWidth || 0.42)) : o.strokeWidth);
+
+function drawShape(g, o, generated, look) {
   const { d, closed } = shapePath(o, generated);
   const isHL = o.shape === 'highlight';
   g.append(svg('path', {
     d,
     fill: closed && o.fill && o.fill !== 'none' ? o.fill : 'none',
     'fill-opacity': isHL ? 0.4 : 1,
-    stroke: isHL ? 'none' : o.stroke,
-    'stroke-width': o.strokeWidth,
+    stroke: isHL ? 'none' : look ? look.color(o.stroke) : o.stroke,
+    'stroke-width': penStroke(o, look),
     'stroke-linecap': 'round',
     'stroke-linejoin': 'round',
   }));
 }
 
-function drawPath(g, o) {
+function drawPath(g, o, look) {
   const pts = o.points.map(([u, v]) => [u * o.w, v * o.h]);
   g.append(svg('path', {
     d: smoothPath(pts),
     fill: 'none',
-    stroke: o.stroke,
-    'stroke-width': o.strokeWidth,
+    stroke: look ? look.color(o.stroke) : o.stroke,
+    'stroke-width': penStroke(o, look),
     'stroke-opacity': o.highlighter ? 0.4 : 1,
     'stroke-linecap': o.highlighter ? 'butt' : 'round',
     'stroke-linejoin': 'round',

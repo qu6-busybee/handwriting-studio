@@ -83,7 +83,10 @@ export function createProject(presetId = 'filler-wide') {
 // A text box shows handwriting only when the project is in the handwriting
 // stage AND its content still matches what was approved at generation time.
 // Handwriting settings (style, size, ink…) can change freely afterwards.
-export const contentSig = (o) => JSON.stringify([o.text || '', Math.round(o.w * 10)]);
+// Colour markup ([red]…[/]) is styling, not content, so recolouring words
+// after generating doesn't send the box back to plain text.
+const sigText = (t) => (t || '').replace(/\[\/\]|\[(#[0-9a-f]{3,8}|[a-z]+)\]/gi, '');
+export const contentSig = (o) => JSON.stringify([sigText(o.text), Math.round(o.w * 10)]);
 export const isGenerated = (o) => state.project.stage === 'handwriting' && !!o.gen && o.gen.sig === contentSig(o);
 export const isStale = (o) => o.type === 'text' && state.project.stage === 'handwriting' && !isGenerated(o) && !!(o.text || '').trim();
 

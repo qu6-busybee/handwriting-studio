@@ -253,6 +253,38 @@ textarea { resize: vertical; width: 100%; }
 .margin-fields .ctl.numf .numwrap { flex: 1; }
 .ui .p-hl.last { stroke: #9fd59a; }
 
+/* ---------- auto-layout ---------- */
+.modal.autolayout { width: min(1180px, 96vw); height: 88vh; }
+.al-layout { display: grid; grid-template-columns: 1fr 360px; gap: 18px; flex: 1; min-height: 0; }
+.al-left { display: flex; flex-direction: column; min-height: 0; }
+.al-input { flex: 1; min-height: 240px; font-size: 13.5px; line-height: 1.55; resize: none; }
+.al-status { color: var(--muted); font-size: 12px; min-height: 18px; margin-top: 6px; }
+.al-right { overflow-y: auto; min-height: 0; padding-right: 4px; }
+.al-right h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 16px 0 6px; }
+.al-summary { font-size: 12.5px; }
+.al-blocks { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.al-block { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; background: var(--panel-2); border-radius: 6px; padding: 5px 6px; border-left: 3px solid var(--line); }
+.al-block span { flex: 1; color: var(--muted); overflow-wrap: anywhere; }
+.al-block .al-type { flex: none; width: 116px; padding: 2px 4px; font-size: 11.5px; }
+.al-block.t-heading, .al-block.t-subheading { border-left-color: var(--accent); }
+.al-block.t-list { border-left-color: #9fd59a; }
+.al-block.t-definition { border-left-color: #e0a040; }
+.al-block.t-question, .al-block.t-answer { border-left-color: #c4b5e8; }
+.al-block.t-table, .al-block.t-equation, .al-block.t-image { border-left-color: #e79a9a; }
+.al-cta { margin: 0 0 6px; background: var(--accent-weak); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+/* Narrower windows: toolbar buttons collapse to icons (tooltips keep names). */
+@media (max-width: 1480px) { .tb-lbl { display: none; } }
+@media (max-width: 1320px) { .stage-chip, .save-status { display: none; } }
+
+/* handwriting settings */
+.hw-preview { background: #fdfdfb; border-radius: 6px; padding: 6px 8px; margin: 6px 0 8px; }
+.hw-preview-svg { width: 100%; height: auto; display: block; }
+.hexrow input.hex { width: 90px; font-family: ui-monospace, monospace; font-size: 12px; }
+.te-tools { display: flex; align-items: center; gap: 6px; padding: 6px 2px 0; font-size: 11.5px; }
+.te-tools .sw { width: 18px; height: 18px; }
+.te-tools .btn { margin-left: auto; }
+
 /* ---------- two-stage workflow ---------- */
 .stage-box { display: flex; align-items: center; gap: 6px; }
 .stage-chip { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding: 3px 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--muted); }

@@ -7,6 +7,7 @@ import * as S from '../state.js';
 import { printableRect, activeProfile } from '../print.js';
 import { livePaper, commitPaper } from '../paperedit.js';
 import { getUnit, fmtLen } from '../ui/controls.js';
+import { parseText } from '../handwriting/engine.js';
 
 const { state, bus } = S;
 let ws, stage, wrap, pageSvg, contentG, uiG, editor;
@@ -79,7 +80,7 @@ export function renderAll() {
   pageSvg.append(state.project.view.overlay || state.paperEdit ? paperOverlay(p) : svg('rect', { width: p.w, height: p.h, fill: p.bg || '#fdfdfb' }));
   if (state.paperEdit) {
     const wb = writingBox(p), m = p.margins;
-    pageSvg.append(svg('rect', { class: 'margin-box', x: wb.x, y: m.top, width: wb.w, height: p.h - m.top - m.bottom }));
+    pageSvg.append(svg('rect', { class: 'margin-box', x: wb.x, y: m.top, width: Math.max(0, wb.w), height: Math.max(0, p.h - m.top - m.bottom) }));
   }
   if (state.project.view.printable !== false) {
     // Non-printing guide: the printer can't reach outside this box.
@@ -663,6 +664,46 @@ function onDblClick(e) {
   if (o?.type === 'text' && !o.locked) startEditing(o.id);
 }
 
+// Toolbar under the inline editor: colour the selected words, or (after
+// generating) re-write just the selected words with fresh variation.
+const WORD_COLORS = [['blue', '#22408f'], ['black', '#1d1d24'], ['red', '#b3262e'], ['green', '#1f7a3d'], ['purple', '#5b2d8f']];
+const countWords = (s) => parseText(s).flat().filter((w) => !w.indent).length;
+
+function textTools(o) {
+  const bar = h('div.te-tools');
+  const ta = () => bar.parentElement.querySelector('textarea');
+  const sel = () => { const t = ta(); return [t.selectionStart, t.selectionEnd]; };
+  bar.append(h('span.muted', 'Selection:'));
+  for (const [name, col] of WORD_COLORS) {
+    bar.append(h('button.sw', { title: `Make selected words ${name}`, style: { background: col }, on: {
+      mousedown: (e) => e.preventDefault(), // keep the textarea selection
+      click: () => {
+        const t = ta(); const [a, b] = sel();
+        if (a === b) return toast('Select some words first');
+        t.setRangeText(`[${name}]${t.value.slice(a, b)}[/]`, a, b, 'select');
+        t.dispatchEvent(new Event('input'));
+      },
+    } }));
+  }
+  if (state.project.stage === 'handwriting') {
+    bar.append(h('button.btn.small', { title: 'Write the selected words again, leaving the rest unchanged', on: {
+      mousedown: (e) => e.preventDefault(),
+      click: () => {
+        const t = ta(); const [a, b] = sel();
+        if (a === b) return toast('Select the words to rewrite');
+        let first = countWords(t.value.slice(0, a));
+        if (a > 0 && !/\s/.test(t.value[a - 1])) first -= 1;
+        const last = countWords(t.value.slice(0, b)) - 1;
+        o.hw.wordSeeds = { ...(o.hw.wordSeeds || {}) };
+        for (let i = Math.max(0, first); i <= last; i++) o.hw.wordSeeds[i] = (Math.random() * 1e9) | 0;
+        refreshObjects([o]);
+        toast(`Rewrote ${last - Math.max(0, first) + 1} word(s)`);
+      },
+    } }, 'Rewrite words'));
+  }
+  return bar;
+}
+
 export function startEditing(id) {
   const o = S.findObj(id);
   if (!o) return;
@@ -670,7 +711,8 @@ export function startEditing(id) {
   state.editingId = id;
   S.setSelection([id], { expand: false });
   editor = h('div.text-editor',
-    h('textarea', { value: o.text, placeholder: 'Type here. ~~cross out~~  __underline__', spellcheck: true }),
+    h('textarea', { value: o.text, placeholder: 'Type here. ~~cross out~~  __underline__  [red]colour[/]', spellcheck: true }),
+    textTools(o),
     h('div.te-hint', 'Esc or click away to finish · Ctrl+Enter new box below'));
   const ta = editor.querySelector('textarea');
   ta.addEventListener('input', () => {

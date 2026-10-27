@@ -246,7 +246,7 @@ export function openPaperStudio({ paper, name = 'My paper', editingId = null, fo
     s.append(svg('rect', { x: 0, y: 0, width: p.w, height: p.h, fill: '#000', opacity: 0.25, transform: 'translate(0.6 0.8)' }));
     s.append(paperOverlay(p));
     const wb = writingBox(p);
-    s.append(svg('rect', { class: 'margin-box', x: wb.x, y: p.margins.top, width: wb.w, height: p.h - p.margins.top - p.margins.bottom }));
+    s.append(svg('rect', { class: 'margin-box', x: wb.x, y: p.margins.top, width: Math.max(0, wb.w), height: Math.max(0, p.h - p.margins.top - p.margins.bottom) }));
     if (step === 'edit') s.append(handles(p, k));
     s.append(dimensions(p, k));
     stage.replaceChildren(s);

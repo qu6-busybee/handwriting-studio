@@ -66,6 +66,32 @@ The blue lines, red margin, paper colour and the dashed printable-area box are g
   - *Upload a font:* TTF, OTF or WOFF.
   - Characters you haven't provided fall back to a neat print style.
 
+**AI Auto-Layout** (toolbar, or **Insert → AI Auto-Layout…**)
+- **Input:** paste or type text; import .txt, .md, .csv or .docx; add one or more images. Each image can be read with on-device OCR (Tesseract, loaded on first use) or placed as a diagram.
+- **Structure recognition:** headings and subheadings, paragraphs (re-joining lines that were hard-wrapped when copied), bulleted, numbered and nested lists, term–definition pairs, questions with their answers, tables (tab, CSV or Markdown), and equations. You can review and correct each detected type before placing. Wording is never rewritten, summarised or dropped.
+- **Placement:**
+  - Text sits on the ruled lines, between the red margins and the top and bottom boundaries, at your handwriting size, after any existing content.
+  - Pages are added as needed. Text is never shrunk and never runs past the bottom.
+  - Headings stay with what follows, short definitions and lists stay together, and long paragraphs continue across pages.
+  - Questions stay with their answers, and answers, list levels and equations are indented.
+- **Result:** everything arrives as plain, editable text for review. Nothing is handwritten until **Generate Handwriting**.
+- **What it is:** the recognition is rule-based and runs entirely in your browser; nothing is sent to an online AI service. OCR quality depends on the image, and photos of handwriting or complex diagrams won't convert to text reliably.
+
+**Handwriting settings** (right panel, per text box or for the whole document)
+- **Live sample:** shows how the settings look as finished handwriting, even while the page is still in editing mode.
+- **Instruments:** ballpoint, gel, fountain, fine-tip, mechanical pencil, graphite pencil and marker. Each has its own texture filter and stroke behaviour.
+- **Colours:** standard, dark and light blue, black, blue-black, red, green, purple, any colour picker value, or a HEX code.
+- **Colour per word:** select words in the on-page editor and click a colour, or write `[red]…[/]` / `[#hex]…[/]`. Recolouring after generating keeps the handwriting.
+- **Intensity:** ink darkness, pen pressure, stroke thickness, ink consistency, stroke variation, ink texture, pencil softness and opacity.
+- **Style:** print or cursive, style, size, neatness, writing speed, slant, word and letter spacing.
+- **Variation:** baseline, letter shape, and line-to-line consistency.
+- **After generating:**
+  - **Regenerate this section** re-writes a whole box.
+  - **Rewrite words** (in the on-page editor) re-writes only the selected words; every word has its own variation.
+  - **Restore typed text** turns a box back into plain text.
+  - **Apply to entire document** copies the current settings to every text box.
+- Shapes and drawings can use any instrument and pressure too, for example a mechanical-pencil diagram.
+
 **Paper, printing and export**
 - Presets for wide, college and narrow ruling (8 × 10½ in filler and Letter), A4 8 mm and 7 mm, and A5. Every measurement is editable, and a measure-across-many-lines helper sets precise spacing (see [docs/PAPER.md](docs/PAPER.md)).
 - **Paper library and Paper Studio** (the **Paper Settings** button, and every new project):

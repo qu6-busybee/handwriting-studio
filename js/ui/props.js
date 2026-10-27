@@ -9,6 +9,8 @@ import { openCalibration } from '../print.js';
 import { aabb, startEditing } from '../editor/canvas.js';
 import { icon } from './icons.js';
 import { paperPanel } from './paperpanel.js';
+import { hwSettings } from './hwpanel.js';
+import { PENS, INK_PRESETS } from '../handwriting/pens.js';
 import { openPaperLibrary } from './paperstudio.js';
 import { commitPaper } from '../paperedit.js';
 import { applyPreset } from '../paper.js';
@@ -53,75 +55,6 @@ function build() {
   root.replaceChildren(body);
 }
 
-// ---------- handwriting controls shared by single and multi selection ----------
-function hwControls(objs, { full = true } = {}) {
-  const o0 = objs[0];
-  const get = (k) => () => o0.hw[k];
-  const set = (k) => (v) => { objs.forEach((o) => (o.hw[k] = v)); live(); };
-  const setC = (k) => (v) => { set(k)(v); done(); };
-  const out = [stageNote(objs)];
-  out.push(
-    select('Style', get('style'), styleOptions(), setC('style')),
-    segmented('Manner', get('manner'), [['neat', 'Neat'], ['casual', 'Casual'], ['rushed', 'Rushed']], setC('manner')),
-    penControls(objs, (k, v) => { objs.forEach((o) => (o.hw[k] = v)); }),
-    toggle('Size follows lines', () => !!o0.hw.autoSize, (v) => { set('autoSize')(v); done(); build(); }, 'Letters scale with the paper’s line spacing'),
-    o0.hw.autoSize
-      ? slider('Letter height', () => o0.hw.sizeRatio || 0.37, { min: 0.2, max: 0.6, step: 0.01, fmt: (v) => Math.round(v * 100) + '%', onInput: set('sizeRatio'), onCommit: done, tip: 'Lowercase height as a share of the line spacing' })
-      : slider('Letter size', get('size'), { min: 1.2, max: 9, step: 0.05, unit: 'mm', onInput: set('size'), onCommit: done, tip: 'Height of lowercase letters (x-height)' }),
-    slider('Neatness', get('neatness'), { min: 0, max: 1, step: 0.01, fmt: (v) => Math.round(v * 100) + '%', onInput: set('neatness'), onCommit: done }),
-  );
-  if (!full) return out;
-  if (state.project.stage === 'handwriting') {
-    out.push(h('button.btn.block', { title: 'Write this section again with fresh natural variation', on: { click: () => S.regenerate(objs) } }, icon('shuffle', 15), objs.length > 1 ? 'Regenerate these sections' : 'Regenerate this section'));
-  }
-  out.push(section('Advanced handwriting', [
-    slider('Slant', get('slant'), { min: -20, max: 25, step: 0.5, unit: '°', onInput: set('slant'), onCommit: done }),
-    slider('Letter spacing', get('letterSpacing'), { min: -0.6, max: 1.5, step: 0.02, unit: 'mm', onInput: set('letterSpacing'), onCommit: done }),
-    slider('Word spacing', get('wordSpacing'), { min: 0.4, max: 2.5, step: 0.05, unit: '×', onInput: set('wordSpacing'), onCommit: done }),
-    toggle('Sit on ruled lines', get('followLines'), (v) => { set('followLines')(v); done(); }, 'Line spacing matches the paper and the text snaps to the blue lines'),
-    slider('Line spacing', () => o0.hw.lineSpacing || state.project.paper.spacing, { min: 3, max: 20, step: 0.05, unit: 'mm', onInput: set('lineSpacing'), onCommit: done, tip: 'Overrides the paper ruling' }),
-    h('button.btn.small.link', { on: { click: () => { set('lineSpacing')(0); done(); } } }, 'Reset to paper ruling'),
-    slider('Baseline drift', get('drift'), { min: 0, max: 1.5, step: 0.01, onInput: set('drift'), onCommit: done }),
-    slider('Ink variation', get('inkVar'), { min: 0, max: 1, step: 0.01, onInput: set('inkVar'), onCommit: done }),
-    slider('Pen weight', get('weight'), { min: 0, max: 0.35, step: 0.01, unit: 'mm', onInput: set('weight'), onCommit: done, tip: 'Thickens font-based styles' }),
-    slider('Pen width', get('penWidth'), { min: 0.15, max: 1.2, step: 0.01, unit: 'mm', onInput: set('penWidth'), onCommit: done, tip: 'Stroke width for drawn styles and cross-outs' }),
-    toggle('Ink texture', get('texture'), (v) => { set('texture')(v); done(); }),
-    slider('Natural mistakes', get('mistakes'), { min: 0, max: 1, step: 0.01, fmt: (v) => Math.round(v * 100) + '%', onInput: set('mistakes'), onCommit: done, tip: 'Occasionally misspells a word, crosses it out and rewrites it' }),
-  ], { collapsible: true, open: false }));
-  return out;
-}
-
-// Explains what the user is looking at in each stage.
-function stageNote(objs) {
-  if (state.project.stage !== 'handwriting') {
-    return h('p.stage-note', 'Shown as plain text while you edit. These settings apply when you click ', h('b', 'Generate Handwriting'), '.');
-  }
-  const stale = objs.filter(S.isStale);
-  if (!stale.length) return null;
-  return h('div.stage-note.warn', `${stale.length > 1 ? 'Some text has' : 'This text has'} changed since it was generated, so it’s shown as plain text. `,
-    h('button.btn.small', { on: { click: () => S.generateHandwriting(stale) } }, 'Generate this section'));
-}
-
-// Pen type + matching colours (ink presets or graphite grades).
-function penControls(objs, setAll) {
-  const o0 = objs[0];
-  const pen = () => o0.hw.pen || 'ballpoint';
-  const wrap = h('div');
-  const draw = () => wrap.replaceChildren(
-    segmented('Pen', pen, [['ballpoint', 'Ballpoint'], ['gel', 'Gel'], ['pencil', 'Pencil']], (v) => {
-      const wasPencil = pen() === 'pencil';
-      setAll('pen', v);
-      if (v === 'pencil' && !wasPencil) setAll('color', S.PENCILS[0].color);
-      if (v !== 'pencil' && wasPencil) setAll('color', S.INKS[0].color);
-      done();
-      draw();
-    }),
-    colorRow(pen() === 'pencil' ? 'Graphite' : 'Ink', () => o0.hw.color, (v, commit) => { setAll('color', v); live(); if (commit) done(); }, { presets: pen() === 'pencil' ? S.PENCILS : S.INKS }),
-  );
-  draw();
-  return wrap;
-}
-
 // ---------- nothing selected: page + writer ----------
 function pageProps() {
   const p = state.project;
@@ -143,21 +76,10 @@ function pageProps() {
         h('button.btn', { on: { click: () => openPaperLibrary() } }, 'Paper settings…'),
         h('button.btn', { on: { click: openCalibration } }, 'Calibrate printer…')),
     ]),
-    section('Writer', [
-      h('p.muted.small', 'New text uses these settings. Every page shares one writer identity, so letters keep the same habits throughout.'),
-      select('Default style', () => d.style, styleOptions(), (v) => { d.style = v; done(); }),
-      segmented('Manner', () => d.manner, [['neat', 'Neat'], ['casual', 'Casual'], ['rushed', 'Rushed']], (v) => { d.manner = v; done(); }),
-      d.autoSize
-        ? slider('Letter height', () => d.sizeRatio || 0.37, { min: 0.2, max: 0.6, step: 0.01, fmt: (v) => Math.round(v * 100) + '%', onInput: setD('sizeRatio'), onCommit: done, tip: 'Share of the line spacing (set in Paper settings → Alignment)' })
-        : slider('Letter size', () => d.size, { min: 1.2, max: 9, step: 0.05, unit: 'mm', onInput: setD('size'), onCommit: done }),
-      penControls([{ hw: d }], (k, v) => { d[k] = v; }),
-      slider('Neatness', () => d.neatness, { min: 0, max: 1, step: 0.01, fmt: (v) => Math.round(v * 100) + '%', onInput: setD('neatness'), onCommit: done }),
-      h('div.btn-row',
-        h('button.btn', { title: 'Apply style, manner, size, ink and neatness to every text box', on: { click: () => {
-          for (const pg of p.pages) for (const o of pg.objects) if (o.type === 'text') Object.assign(o.hw, { style: d.style, manner: d.manner, size: d.size, autoSize: !!d.autoSize, sizeRatio: d.sizeRatio || 0.37, pen: d.pen, color: d.color, neatness: d.neatness });
-          done();
-        } } }, 'Apply to all text'),
-        h('button.btn', { title: 'A different person: changes everyone’s letter habits and slant', on: { click: () => { p.writer.seed = (Math.random() * 1e9) | 0; done(); } } }, 'New writer')),
+    section('Handwriting settings', [
+      h('p.muted.small', 'For new text, and for the whole document with “Apply to entire document”. Select a text box to change just that box.'),
+      ...hwSettings([{ hw: d }], { rebuild: build, defaults: true }),
+      h('button.btn.block', { title: 'A different person: changes everyone’s letter habits and slant', on: { click: () => { p.writer.seed = (Math.random() * 1e9) | 0; done(); } } }, 'New writer'),
     ]),
     section('Shortcuts', [h('div.shortcuts',
       ...[['T', 'Text'], ['P', 'Pen'], ['R / O / L / A', 'Shapes'], ['Dbl-click', 'Edit text'], ['Ctrl D', 'Duplicate'], ['Ctrl G', 'Group'], ['Alt-drag', 'Copy'], ['Space-drag', 'Pan'], ['Ctrl wheel', 'Zoom']]
@@ -173,22 +95,35 @@ function objectProps(o) {
     ta.addEventListener('input', () => { o.text = ta.value; live(); });
     ta.addEventListener('change', done);
     syncers.add(() => { if (ta.isConnected && document.activeElement !== ta) ta.value = o.text; });
-    out.push(section('Text', [ta, h('p.muted.small', 'Tab = paragraph indent · ~~crossed out~~ · __underlined__'),
+    out.push(section('Text', [ta, h('p.muted.small', 'Tab = paragraph indent · ~~crossed out~~ · __underlined__ · [red]coloured words[/] (blue, black, red, green, purple, darkblue, lightblue, blueblack or #hex)'),
       h('button.btn.small.link', { on: { click: () => startEditing(o.id) } }, 'Edit on the page')]));
     ta.addEventListener('keydown', (e) => { if (e.key === 'Tab') { e.preventDefault(); ta.setRangeText('\t', ta.selectionStart, ta.selectionEnd, 'end'); ta.dispatchEvent(new Event('input')); } });
-    out.push(section('Handwriting', hwControls([o])));
+    out.push(section('Handwriting settings', hwSettings([o], { rebuild: build })));
   } else if (o.type === 'shape') {
     out.push(section(o.name || 'Shape', shapeControls([o])));
   } else if (o.type === 'path') {
     out.push(section(o.highlighter ? 'Highlight' : 'Drawing', [
-      colorRow('Colour', () => o.stroke, (v, c) => { o.stroke = v; live(); if (c) done(); }, { presets: o.highlighter ? HL : undefined }),
+      !o.highlighter && instrumentSelect([o]),
+      colorRow('Colour', () => o.stroke, (v, c) => { o.stroke = v; live(); if (c) done(); }, { presets: o.highlighter ? HL : INK_PRESETS }),
       slider('Width', () => o.strokeWidth, { min: 0.15, max: 8, step: 0.05, unit: 'mm', onInput: (v) => { o.strokeWidth = v; live(); }, onCommit: done }),
-    ]));
+      !o.highlighter && slider('Pen pressure', () => o.pressure ?? 0.5, { min: 0, max: 1, step: 0.01, fmt: (v) => Math.round(v * 100) + '%', onInput: (v) => { o.pressure = v; live(); }, onCommit: done }),
+    ].filter(Boolean)));
   } else if (o.type === 'image') {
     out.push(section('Image', [h('p.muted.small', 'Images print exactly as shown. Use PNGs with transparent backgrounds for stickers or diagrams.')]));
   }
   out.push(geometry(o), arrangeSection([o]));
   return out;
+}
+
+// Shapes and drawings can use any writing instrument (e.g. a pencil diagram).
+function instrumentSelect(objs) {
+  return select('Instrument', () => objs[0].pen || 'ballpoint', Object.entries(PENS).map(([k, p]) => ({ value: k, label: p.label })), (v) => {
+    objs.forEach((o) => {
+      if (PENS[v].kind === 'pencil' && PENS[o.pen || 'ballpoint'].kind !== 'pencil') o.stroke = '#47494f';
+      o.pen = v;
+    });
+    done();
+  });
 }
 
 const HL = [{ name: 'Yellow', color: '#f2df3c' }, { name: 'Green', color: '#8be08b' }, { name: 'Pink', color: '#f59cc9' }, { name: 'Blue', color: '#8ecdf5' }];
@@ -198,7 +133,9 @@ function shapeControls(objs) {
   const set = (k) => (v) => { objs.forEach((o) => (o[k] = v)); live(); };
   const isHL = o0.shape === 'highlight';
   return [
-    !isHL && colorRow('Stroke', () => o0.stroke, (v, c) => { set('stroke')(v); if (c) done(); }),
+    !isHL && instrumentSelect(objs),
+    !isHL && colorRow('Stroke', () => o0.stroke, (v, c) => { set('stroke')(v); if (c) done(); }, { presets: INK_PRESETS }),
+    !isHL && slider('Pen pressure', () => o0.pressure ?? 0.5, { min: 0, max: 1, step: 0.01, fmt: (v) => Math.round(v * 100) + '%', onInput: set('pressure'), onCommit: done }),
     !isHL && slider('Stroke width', () => o0.strokeWidth, { min: 0.15, max: 3, step: 0.05, unit: 'mm', onInput: set('strokeWidth'), onCommit: done }),
     ['rect', 'ellipse', 'triangle', 'star', 'highlight'].includes(o0.shape) && colorRow('Fill', () => o0.fill, (v, c) => { set('fill')(v); if (c) done(); }, { allowNone: !isHL, presets: isHL ? HL : undefined }),
     !isHL && toggle('Hand-drawn', () => o0.handDrawn !== false, (v) => { set('handDrawn')(v); done(); }),
@@ -240,7 +177,7 @@ function multiProps(objs) {
   const texts = objs.filter((o) => o.type === 'text');
   const shapes = objs.filter((o) => o.type === 'shape');
   const out = [section(`${objs.length} objects`, [alignButtons()])];
-  if (texts.length) out.push(section(`Handwriting (${texts.length} text)`, hwControls(texts, { full: true })));
+  if (texts.length) out.push(section(`Handwriting settings (${texts.length} text)`, hwSettings(texts, { rebuild: build })));
   if (shapes.length) out.push(section(`Shapes (${shapes.length})`, shapeControls(shapes)));
   out.push(arrangeSection(objs));
   return out;
