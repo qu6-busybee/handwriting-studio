@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Handwriting Studio</title>
+  <meta name="description" content="A browser editor for realistic handwritten pages, aligned and printed onto real notebook paper.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/app.css">
+  <script src="vendor/opentype.min.js"></script>
+  <script src="vendor/jspdf.umd.min.js" defer></script>
+</head>
+<body>
+  <div id="app" class="loading">
+    <header id="topbar"></header>
+    <div id="main">
+      <nav id="rail" aria-label="Tools"></nav>
+      <aside id="leftpanel"></aside>
+      <section id="workspace" data-tool="select"><div id="stage"></div></section>
+      <aside id="rightpanel"></aside>
+    </div>
+    <section id="stepview"></section>
+  </div>
+  <div id="print-root"></div>
+  <div id="modal-root"></div>
+  <div id="toast" role="status"></div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

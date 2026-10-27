@@ -1,31 +1,98 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Handwriting Studio</title>
-  <meta name="description" content="A browser editor for realistic handwritten pages, aligned and printed onto real notebook paper.">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/app.css">
-  <script src="vendor/opentype.min.js"></script>
-  <script src="vendor/jspdf.umd.min.js" defer></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Handwriting Studio</title>
+<meta name="description" content="Type your notes, turn them into realistic handwriting and print them onto real notebook paper.">
+<style>
+@font-face { font-family: 'Arimo'; src: url(fonts/arimo.woff) format('woff'); }
+@font-face { font-family: 'Hand'; src: url(fonts/nanum-pen-script.woff) format('woff'); }
+:root {
+  --bg: #1b1c1f; --panel: #232428; --line: #34363c;
+  --text: #e7e8ea; --muted: #979aa2; --accent: #7ba4f7;
+  --ink: #1f3fa8; --paper: #fbfaf6; --rule: #b9cde8; --margin: #e6a3a3;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 'Arimo', system-ui, sans-serif; }
+a { color: inherit; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+nav { display: flex; align-items: center; justify-content: space-between; padding: 20px 0; }
+.brand { font-weight: 700; letter-spacing: .2px; text-decoration: none; }
+.brand span { color: var(--accent); }
+.btn { display: inline-block; padding: 11px 20px; border-radius: 8px; background: var(--accent); color: #0f1730; font-weight: 700; text-decoration: none; }
+.btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+.btn:hover { filter: brightness(1.08); }
+.hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; padding: 56px 0 72px; }
+h1 { font-size: clamp(34px, 5vw, 52px); line-height: 1.08; margin: 0 0 18px; letter-spacing: -.5px; }
+.lead { color: var(--muted); font-size: 18px; margin: 0 0 28px; max-width: 30em; }
+.ctas { display: flex; gap: 12px; flex-wrap: wrap; }
+/* Ruling and text share one line height (in container units) so the words sit on the lines. */
+.note { container-type: inline-size; position: relative; aspect-ratio: 8 / 10.5; border-radius: 4px; background: var(--paper); box-shadow: 0 20px 50px rgba(0,0,0,.45); transform: rotate(-1.5deg); overflow: hidden; }
+.note::before { content: ''; position: absolute; top: 0; bottom: 0; left: 15%; width: 1.5px; background: var(--margin); }
+.note p { --lh: 9cqw; position: absolute; inset: 0; margin: 0; padding: calc(var(--lh) * 1.6) 6% 0 18%; font: 7.4cqw/var(--lh) 'Hand', cursive; color: var(--ink);
+  background: linear-gradient(transparent calc(100% - 1px), var(--rule) 0) 0 calc(var(--lh) * .7) / 100% var(--lh); }
+section h2 { font-size: 26px; margin: 0 0 24px; }
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding-bottom: 72px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px; }
+.card b { display: block; color: var(--accent); font-size: 13px; letter-spacing: .6px; margin-bottom: 6px; }
+.card h3 { margin: 0 0 6px; font-size: 18px; }
+.card p { margin: 0; color: var(--muted); font-size: 15px; }
+.plans { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding-bottom: 72px; }
+.plans ul { margin: 12px 0 0; padding-left: 18px; color: var(--muted); font-size: 15px; }
+.plans .pro { border-color: var(--accent); }
+.tag { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: var(--accent); color: #0f1730; vertical-align: 2px; margin-left: 6px; }
+footer { border-top: 1px solid var(--line); padding: 24px 0 40px; color: var(--muted); font-size: 14px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+@media (max-width: 760px) {
+  .hero { grid-template-columns: 1fr; gap: 36px; padding-top: 24px; }
+  .steps, .plans { grid-template-columns: 1fr; }
+}
+</style>
 </head>
 <body>
-  <div id="app" class="loading">
-    <header id="topbar"></header>
-    <div id="main">
-      <nav id="rail" aria-label="Tools"></nav>
-      <aside id="leftpanel"></aside>
-      <section id="workspace" data-tool="select"><div id="stage"></div></section>
-      <aside id="rightpanel"></aside>
+<div class="wrap">
+  <nav>
+    <a class="brand" href="./">Handwriting <span>Studio</span></a>
+    <a class="btn ghost" href="app.html">Open the editor</a>
+  </nav>
+
+  <header class="hero">
+    <div>
+      <h1>Typed notes in, real handwriting out.</h1>
+      <p class="lead">Lay out your notes like a slide, turn them into natural handwriting, and print just the ink onto your own lined notebook paper. The words land on the lines.</p>
+      <div class="ctas">
+        <a class="btn" href="app.html">Start writing</a>
+        <a class="btn ghost" href="#how">How it works</a>
+      </div>
     </div>
-    <section id="stepview"></section>
-  </div>
-  <div id="print-root"></div>
-  <div id="modal-root"></div>
-  <div id="toast" role="status"></div>
-  <script type="module" src="js/main.js"></script>
+    <div class="note" aria-label="Sample of handwriting on lined paper">
+      <p>Photosynthesis notes<br>Plants turn light, water<br>and CO₂ into glucose.<br>Happens in chloroplasts.</p>
+    </div>
+  </header>
+
+  <section id="how">
+    <h2>Three steps</h2>
+    <div class="steps">
+      <div class="card"><b>STEP 1</b><h3>Choose paper</h3><p>Pick a notebook preset or measure your own paper: size, line spacing and red margin.</p></div>
+      <div class="card"><b>STEP 2</b><h3>Add content</h3><p>Type or paste into text boxes and arrange them on the page. Lines are only guides.</p></div>
+      <div class="card"><b>STEP 3</b><h3>Handwriting &amp; print</h3><p>Generate the handwriting, check an example print, then print only the ink onto real paper.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Plans</h2>
+    <div class="plans">
+      <div class="card"><h3>Basic</h3><p>Everything you need for neat handwritten pages.</p>
+        <ul><li>6 handwriting styles</li><li>5 ink colours, size and neatness</li><li>Custom paper and calibrated printing</li></ul></div>
+      <div class="card pro"><h3>Pro <span class="tag">TEST MODE</span></h3><p>More realism and less work.</p>
+        <ul><li>AI Auto-Layout across multiple pages</li><li>12 styles plus your own handwriting</li><li>Pens, pencils, pressure and any colour</li><li>Different handwriting per text box</li></ul></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Handwriting Studio</span>
+    <a href="app.html">Open the editor →</a>
+  </footer>
+</div>
 </body>
 </html>
