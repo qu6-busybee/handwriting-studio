@@ -87,7 +87,7 @@ function pageProps() {
         h('button.btn', { on: { click: openHistory } }, 'History')),
     ], { collapsible: true, open: true }) : null,
     section('Paper', [
-      h('div.paper-summary', h('strong', paperLabel(p.paper)), h('span.muted.small', rulingName(p.paper.spacing))),
+      h('div.paper-summary', h('strong', paperLabel(p.paper)), h('span.muted.small', rulingName(p.paper.spacing, p.paper.blank))),
       h('div.btn-row',
         h('button.btn', { on: { click: () => S.setStep(1) } }, 'Change paper'),
         h('button.btn', { on: { click: () => S.setPaperEdit(true) } }, 'Adjust on page')),

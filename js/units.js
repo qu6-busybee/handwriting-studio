@@ -63,7 +63,8 @@ export function parseLength(text, unit) {
 }
 
 // Ruling description from line spacing, e.g. "Wide ruled · 11/32 in".
-export function rulingName(spacing) {
+export function rulingName(spacing, blank = false) {
+  if (blank) return 'Blank · no lines';
   const known = [[(11 / 32) * 25.4, 'Wide ruled'], [(9 / 32) * 25.4, 'College ruled'], [0.25 * 25.4, 'Narrow ruled'], [8, '8 mm ruled'], [7, '7 mm ruled']];
   const k = known.find(([s]) => Math.abs(s - spacing) < 0.02);
   const inch = fmtInches(spacing / 25.4);

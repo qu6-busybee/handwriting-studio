@@ -8,6 +8,8 @@ const IN = 25.4;
 // Typical values. Brands differ by a millimetre or two, which is why every
 // field is editable and paper can be adjusted directly on the canvas.
 export const PAPER_PRESETS = [
+  { id: 'letter-blank', name: 'Blank printer paper · US Letter', size: '8 1/2 × 11 in', w: 8.5 * IN, h: 11 * IN, spacing: (5 / 16) * IN, firstLine: 1.25 * IN, lines: 28, margin: 1 * IN, rightLimit: 1 * IN, holes: false, blank: true },
+  { id: 'a4-blank', name: 'Blank printer paper · A4', size: '210 × 297 mm', w: 210, h: 297, spacing: 8, firstLine: 30, lines: 31, margin: 25, rightLimit: 25, holes: false, blank: true },
   { id: 'filler-wide', name: 'Loose-leaf · Wide ruled', size: '8 × 10 1/2 in', w: 8 * IN, h: 10.5 * IN, spacing: (11 / 32) * IN, firstLine: 1 * IN, lines: 27, margin: 1.25 * IN, rightLimit: 0.25 * IN, holes: true },
   { id: 'filler-college', name: 'Loose-leaf · College ruled', size: '8 × 10 1/2 in', w: 8 * IN, h: 10.5 * IN, spacing: (9 / 32) * IN, firstLine: 1 * IN, lines: 33, margin: 1.25 * IN, rightLimit: 0.25 * IN, holes: true },
   { id: 'letter-wide', name: 'US Letter · Wide ruled', size: '8 1/2 × 11 in', w: 8.5 * IN, h: 11 * IN, spacing: (11 / 32) * IN, firstLine: 1 * IN, lines: 29, margin: 1.25 * IN, rightLimit: 0.25 * IN, holes: true },
@@ -38,7 +40,8 @@ export function normalizePaper(p) {
   // Right-side red line: the back-of-sheet margin showing faintly through the
   // paper. x is measured from the RIGHT edge. Faded by default.
   p.rightLine = { show: true, x: p.margin, width: p.marginStyle.width, color: p.marginStyle.color, opacity: 0.3, wrap: true, ...(p.rightLine || {}) };
-  p.margins.left = (p.marginStyle.show ? p.margin : 0) + IN / 16; // text starts 1/16 in right of the red line
+  // Text starts 1/16 in right of the red line; on blank paper, at the margin.
+  p.margins.left = p.blank ? p.margin : (p.marginStyle.show ? p.margin : 0) + IN / 16;
   p.margins.right = p.rightLine.show && p.rightLine.wrap ? p.rightLine.x + IN / 16 : p.margins.freeRight;
   p.rightLimit = p.margins.right;
   // Real paper is rarely perfect at the bottom: the last line can have its
@@ -51,9 +54,19 @@ export function normalizePaper(p) {
 
 const geometryOf = (pr) => ({ w: pr.w, h: pr.h, spacing: pr.spacing, firstLine: pr.firstLine, lines: pr.lines, margin: pr.margin, rightLimit: pr.rightLimit, holes: pr.holes });
 
+// Blank printer paper: no visible lines or red margins. The ruling is still
+// there as invisible guides, so text keeps even rows and plain 1 in margins.
+const blankLook = () => ({
+  blank: true,
+  lineStyle: { ...LOOK.lineStyle, opacity: 0 },
+  marginStyle: { ...LOOK.marginStyle, show: false },
+  rightLine: { show: false, x: 0, width: LOOK.marginStyle.width, color: LOOK.marginStyle.color, opacity: 0.3, wrap: false },
+});
+const ruledLook = () => ({ blank: false, lineStyle: { ...LOOK.lineStyle }, marginStyle: { ...LOOK.marginStyle } });
+
 export function paperFromPreset(id) {
   const pr = allPresets().find((x) => x.id === id) || PAPER_PRESETS[0];
-  const base = pr.paper ? JSON.parse(JSON.stringify(pr.paper)) : geometryOf(pr);
+  const base = pr.paper ? JSON.parse(JSON.stringify(pr.paper)) : { ...geometryOf(pr), ...(pr.blank ? blankLook() : {}) };
   return normalizePaper({ ...base, presetId: pr.id });
 }
 
@@ -69,6 +82,9 @@ export function applyPreset(paper, id) {
     Object.assign(paper, geometryOf(pr), { presetId: id, autoLines: false, orientation: pr.w > pr.h ? 'landscape' : 'portrait' });
     paper.margins = { ...paper.margins, freeRight: pr.rightLimit, linkLeft: true };
     paper.rightLine = { ...(paper.rightLine || {}), x: pr.margin }; // back-side margin mirrors the front
+    // Switching between blank and ruled paper swaps the look as well.
+    if (pr.blank) Object.assign(paper, blankLook());
+    else if (paper.blank) Object.assign(paper, ruledLook(), { rightLine: { ...paper.rightLine, show: true, wrap: true } });
     normalizePaper(paper);
   }
 }
