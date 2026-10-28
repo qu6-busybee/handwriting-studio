@@ -2,7 +2,7 @@
 // reference files; Claude writes a complete draft (with a requirements
 // checklist and questions about anything missing) and the draft is laid out
 // on the notebook pages as ordinary editable Arial text boxes.
-import { h, toast, uid, acceptFiles } from '../util.js';
+import { h, toast, uid, acceptFiles, dropBox } from '../util.js';
 import * as S from '../state.js';
 import { openModal } from '../ui/modal.js';
 import { ask, costLabel, getKey } from '../layout/claude.js';
@@ -183,7 +183,7 @@ export function openProjectBuilder() {
     h('div.ai-col',
       h('label.field.col', h('span', 'What should the project be?'), desc),
       h('div.field.col', h('span', 'Rubric, instructions and reference files'),
-        h('div.row', h('button.btn', { on: { click: pick } }, 'Add files…'), h('span.muted.small', 'PDF, Word, text or images. You can also drop files here or paste them.')),
+        dropBox('Drag and drop files here, or click to browse', 'PDF, Word, text or images · Ctrl V pastes a screenshot', pick),
         fileList),
       h('label.field.col', h('span', 'Notes and details'), notes),
       hasContent && h('div.field', h('span', 'Put the draft'), seg([['newpage', 'On new pages'], ['replace', 'Replace all pages']])),

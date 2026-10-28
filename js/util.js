@@ -163,6 +163,15 @@ export function acceptFiles(el, onFiles, filter = () => true) {
   for (const [t, f] of handlers) document.addEventListener(t, f, true);
 }
 
+// A visible dashed box to drop files on (or click to browse). The dialog's
+// acceptFiles() handles the actual drop and paste.
+export function dropBox(title, hint, onClick) {
+  return h('button.drop-box', { type: 'button', on: { click: onClick } },
+    h('span.drop-icon', '⇪'),
+    h('span.drop-title', title),
+    h('span.drop-hint', hint));
+}
+
 export const bufToB64 = (buf) => {
   const bytes = new Uint8Array(buf);
   let s = '';

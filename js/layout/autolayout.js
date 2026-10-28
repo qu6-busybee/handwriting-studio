@@ -1,7 +1,7 @@
 // "AI Auto-Layout" dialog: paste/type text, import files, add images (read
 // with on-device OCR or placed as diagrams), review the detected structure,
 // then lay it all out on the notebook pages in plain editing mode.
-import { h, toast, debounce, readFile, acceptFiles } from '../util.js';
+import { h, toast, debounce, readFile, acceptFiles, dropBox } from '../util.js';
 import * as S from '../state.js';
 import { openModal } from '../ui/modal.js';
 import { seg } from '../print.js';
@@ -71,7 +71,7 @@ export function openAutoLayout() {
   let claudeBlocks = null; // structure returned by Claude (until the text changes)
   let overrides = new Map(); // block index -> chosen type
 
-  const ta = h('textarea.al-input', { placeholder: 'Paste or type your notes, an essay, definitions, a list, questions and answers…\n\nOr add images / a document with the buttons below.', spellcheck: true });
+  const ta = h('textarea.al-input', { placeholder: 'Paste or type your notes, an essay, definitions, a list, questions and answers…\n\nOr drop images and documents in the boxes below.', spellcheck: true });
   const status = h('div.al-status');
   const summary = h('div.al-summary');
   const source = h('div.al-source');
@@ -238,10 +238,9 @@ export function openAutoLayout() {
   m.body.append(
     h('div.al-left',
       ta,
-      h('div.row',
-        h('button.btn', { on: { click: addImages } }, 'Add images…'),
-        h('button.btn', { on: { click: importDoc } }, 'Import document…'),
-        h('span.muted.small', '.txt, .md, .csv, .docx · or drop / paste files')),
+      h('div.drop-pair',
+        dropBox('Drop images here, or click', 'Screenshots, photos, diagrams · Ctrl V pastes', addImages),
+        dropBox('Drop a document here, or click', '.txt, .md, .csv, .docx', importDoc)),
       status),
     h('div.al-right',
       h('p.small.muted', `Paper: ${paperLabel(state.project.paper)}. Content is placed on the blue lines between the red margins, using your handwriting size. New pages are added as needed.`),
