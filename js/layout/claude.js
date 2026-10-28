@@ -74,8 +74,16 @@ For every block, fill unused fields with "" (strings), 0 (indent, image) or [] (
 Where a text marker like ⟦image 2⟧ appears, the content of image 2 belongs at that position: transcribe its text there, using "image" blocks only for figures inside it.
 Where a marker like ⟦diagram 3⟧ appears, the user wants image 3 placed as a picture at that position: output one "image" block with image = 3 there and do not transcribe it.`;
 
-// inputs: { text, images: [{ n, src, name }] } -> { blocks, usage, cost }
-export async function recognize({ text, images }, { onStatus } = {}) {
+// An image (data URL) as a content block.
+export function imageBlock(src, name = 'image') {
+  const m = /^data:(image\/(png|jpeg|gif|webp));base64,(.+)$/.exec(src);
+  if (!m) throw new Error(`${name}: only PNG, JPEG, GIF or WebP images can be sent.`);
+  return { type: 'image', source: { type: 'base64', media_type: m[1], data: m[3] } };
+}
+
+// One structured request: sends `content` and returns the parsed JSON that
+// matches `schema`, plus token usage and an estimated cost.
+export async function ask({ system, content, schema, effort = 'medium', status = 'Claude is working…' }, { onStatus } = {}) {
   const key = getKey();
   if (!key) throw new Error('Add your Anthropic API key first.');
   onStatus?.('Loading the Anthropic SDK…');
@@ -83,16 +91,7 @@ export async function recognize({ text, images }, { onStatus } = {}) {
   // The key belongs to the person using this page and is only sent to Anthropic.
   const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true });
 
-  const content = [];
-  for (const img of images) {
-    const m = /^data:(image\/(png|jpeg|gif|webp));base64,(.+)$/.exec(img.src);
-    if (!m) throw new Error(`${img.name}: only PNG, JPEG, GIF or WebP images can be sent.`);
-    content.push({ type: 'text', text: `Image ${img.n} (${img.name}):` });
-    content.push({ type: 'image', source: { type: 'base64', media_type: m[1], data: m[3] } });
-  }
-  content.push({ type: 'text', text: text.trim() ? `Typed text:\n\n${text}` : 'There is no typed text; use only the images.' });
-
-  onStatus?.('Claude is reading your content…');
+  onStatus?.(status);
   let response;
   try {
     const stream = client.beta.messages.stream({
@@ -100,10 +99,12 @@ export async function recognize({ text, images }, { onStatus } = {}) {
       max_tokens: 64000,
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default', // if a safety classifier declines, another model continues
-      output_config: { effort: 'medium', format: { type: 'json_schema', schema: SCHEMA } },
-      system: SYSTEM,
+      output_config: { effort, format: { type: 'json_schema', schema } },
+      system,
       messages: [{ role: 'user', content }],
     });
+    let chars = 0;
+    stream.on('text', (t) => { chars += t.length; onStatus?.(`${status} (${Math.round(chars / 1000)}k characters written)`); });
     response = await stream.finalMessage();
   } catch (e) {
     throw new Error(friendlyError(e, Anthropic));
@@ -117,7 +118,20 @@ export async function recognize({ text, images }, { onStatus } = {}) {
 
   const u = response.usage || {};
   const cost = ((u.input_tokens || 0) * PRICE.input + (u.output_tokens || 0) * PRICE.output) / 1e6;
-  return { blocks: toBlocks(parsed.blocks || [], images), usage: u, cost };
+  return { data: parsed, usage: u, cost };
+}
+
+export const costLabel = (r) => `${(r.usage.input_tokens || 0).toLocaleString()} in / ${(r.usage.output_tokens || 0).toLocaleString()} out tokens, about $${r.cost.toFixed(r.cost < 0.1 ? 3 : 2)}`;
+
+// inputs: { text, images: [{ n, src, name }] } -> { blocks, usage, cost }
+export async function recognize({ text, images }, { onStatus } = {}) {
+  const content = [];
+  for (const img of images) {
+    content.push({ type: 'text', text: `Image ${img.n} (${img.name}):` }, imageBlock(img.src, img.name));
+  }
+  content.push({ type: 'text', text: text.trim() ? `Typed text:\n\n${text}` : 'There is no typed text; use only the images.' });
+  const r = await ask({ system: SYSTEM, content, schema: SCHEMA, status: 'Claude is reading your content…' }, { onStatus });
+  return { blocks: toBlocks(r.data.blocks || [], images), usage: r.usage, cost: r.cost };
 }
 
 function friendlyError(e, A) {

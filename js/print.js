@@ -551,7 +551,8 @@ export async function saveProjectFile() {
   for (const pg of p.pages) for (const o of pg.objects) {
     if (o.type === 'text') used.add(o.hw.style);
   }
-  const usedAssets = new Set(p.pages.flatMap((pg) => pg.objects.filter((o) => o.asset).map((o) => o.asset)));
+  // Images, plus the original pictures that hand-drawn illustrations came from.
+  const usedAssets = new Set(p.pages.flatMap((pg) => pg.objects.flatMap((o) => [o.asset, o.source]).filter(Boolean)));
   p.assets = Object.fromEntries(Object.entries(p.assets).filter(([k]) => usedAssets.has(k)));
   p.styles = embedStyles(used);
   download(new Blob([JSON.stringify(p)], { type: 'application/json' }), `${safeName()}.hwstudio.json`);

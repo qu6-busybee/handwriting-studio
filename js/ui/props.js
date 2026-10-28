@@ -16,6 +16,10 @@ import { commitPaper } from '../paperedit.js';
 import { applyPreset, paperLabel } from '../paper.js';
 import { rulingName } from '../units.js';
 import { can, gate, upgradeDialog, proBadge } from '../plan.js';
+import { openHandDrawn } from '../drawing/drawdlg.js';
+import { openEditProject } from '../ai/editor.js';
+import { openHistory } from '../ai/history.js';
+import { checklistView } from '../ai/builder.js';
 
 const { state, bus } = S;
 let root;
@@ -51,7 +55,7 @@ function build() {
   const sel = S.selected();
   const body = h('div.props');
   if (state.paperEdit) body.append(...paperPanel(build, openPaperLibrary));
-  else if (!sel.length) body.append(...pageProps());
+  else if (!sel.length) body.append(...pageProps().filter(Boolean));
   else if (sel.length === 1) body.append(...objectProps(sel[0]));
   else body.append(...multiProps(sel));
   root.replaceChildren(body);
@@ -75,6 +79,13 @@ function pageProps() {
   const p = state.project;
   if (p.step === 3) return [documentHandwriting()];
   return [
+    p.ai?.checklist?.length ? section('AI draft', [
+      h('p.muted.small', 'What the rubric asks for, and whether the draft covers it. Text marked “To add” needs your own information.'),
+      checklistView(p.ai.checklist),
+      h('div.btn-row',
+        h('button.btn', { on: { click: () => (can('editProject') ? openEditProject() : upgradeDialog('editProject')) } }, 'Edit with AI…'),
+        h('button.btn', { on: { click: openHistory } }, 'History')),
+    ], { collapsible: true, open: true }) : null,
     section('Paper', [
       h('div.paper-summary', h('strong', paperLabel(p.paper)), h('span.muted.small', rulingName(p.paper.spacing))),
       h('div.btn-row',
@@ -126,8 +137,19 @@ function objectProps(o) {
       !o.highlighter && gate(slider('Pen pressure', () => o.pressure ?? 0.5, { min: 0, max: 1, step: 0.01, fmt: (v) => Math.round(v * 100) + '%', onInput: (v) => { o.pressure = v; live(); }, onCommit: done }), 'advancedInk'),
     ].filter(Boolean)));
   } else if (o.type === 'image') {
-    out.push(section('Image', [h('p.muted.small', 'Images print exactly as shown. Use PNGs with transparent backgrounds for stickers or diagrams.')]));
+    out.push(section('Image', [h('p.muted.small', 'Images print exactly as shown. Use PNGs with transparent backgrounds for stickers or diagrams.'),
+      h('button.btn.block', { on: { click: () => (can('drawings') ? openHandDrawn(o) : upgradeDialog('drawings')) } }, 'Turn into hand-drawn sketch…', !can('drawings') && proBadge())]));
+  } else if (o.type === 'drawing') {
+    out.push(section('Hand-drawn image', [
+      instrumentSelect([o]),
+      colorRow('Pen colour', () => o.stroke, (v, c) => { o.stroke = v; live(); if (c) done(); }, { presets: INK_PRESETS }),
+      slider('Line thickness', () => o.strokeWidth, { min: 0.15, max: 1.5, step: 0.05, unit: 'mm', onInput: (v) => { o.strokeWidth = v; live(); }, onCommit: done }),
+      slider('Darkness', () => o.darkness ?? 0.85, { min: 0, max: 1, step: 0.01, fmt: (v) => Math.round(v * 100) + '%', onInput: (v) => { o.darkness = v; live(); }, onCommit: done }),
+      o.source && h('button.btn.block', { on: { click: () => (can('drawings') ? openHandDrawn(o) : upgradeDialog('drawings')) } }, 'Redraw in another style…', !can('drawings') && proBadge()),
+      h('p.muted.small', 'Vector lines: stays sharp when printed. Add labels and arrows with the Text and Arrow tools.'),
+    ].filter(Boolean)));
   }
+  if (o.ai && !step3) out.unshift(h('div.ai-note', 'Written by AI. Check it before you hand it in.'));
   out.push(geometry(o), arrangeSection([o]));
   return out;
 }

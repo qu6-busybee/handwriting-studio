@@ -74,6 +74,7 @@ export function objectElement(o, ctx) {
   if (o.type === 'text') drawText(inner, o, ctx, hwText, look);
   else if (o.type === 'shape') drawShape(inner, o, on, generated ? look : null);
   else if (o.type === 'path') drawPath(inner, o, generated && !o.highlighter ? look : null);
+  else if (o.type === 'drawing') drawDrawing(inner, o, generated ? look : null);
   else if (o.type === 'image') {
     const href = project.assets[o.asset] || '';
     inner.append(svg('image', { href, width: o.w, height: o.h, preserveAspectRatio: 'none' }));
@@ -222,6 +223,18 @@ function drawPath(g, o, look) {
     'stroke-linecap': o.highlighter ? 'butt' : 'round',
     'stroke-linejoin': 'round',
   }));
+}
+
+// Hand-drawn illustration: outline strokes plus lighter shading strokes, all
+// vector paths (points are stored 0..1 so the drawing scales cleanly).
+function drawDrawing(g, o, look) {
+  const color = look ? look.color(o.stroke) : o.stroke;
+  const width = penStroke(o, look);
+  const alpha = 0.35 + (o.darkness ?? 0.85) * 0.65;
+  for (const [shade, f, op] of [[false, 1, 1], [true, 0.6, 0.7]]) {
+    const d = (o.strokes || []).filter((s) => (s.s < 1) === shade).map((s) => smoothPath(s.p.map(([u, v]) => [u * o.w, v * o.h]))).join('');
+    if (d) g.append(svg('path', { d, fill: 'none', stroke: color, 'stroke-width': width * f, 'stroke-opacity': (alpha * op).toFixed(3), 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }));
+  }
 }
 
 // Content-only group for a page (no paper). editor=true adds hit areas.

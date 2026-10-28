@@ -43,7 +43,7 @@ async function ocr(dataUrl, onProgress) {
   }
 }
 
-async function readDocument(file) {
+export async function readDocument(file) {
   if (/\.docx$/i.test(file.name)) {
     await loadScript('mammoth');
     const r = await window.mammoth.extractRawText({ arrayBuffer: await readFile(file, 'buffer') });

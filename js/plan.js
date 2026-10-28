@@ -11,6 +11,9 @@ const KEY = 'hws.testPlan';
 // Which features each plan unlocks (single place to change later).
 export const FEATURES = {
   aiLayout: 'pro', // AI Auto-Layout, image-to-text, automatic multi-page organisation
+  buildProject: 'pro', // AI Project Builder: rubric analysis and complete drafts
+  editProject: 'pro', // AI Edit Project: natural-language revisions
+  drawings: 'pro', // AI Hand-Drawn Images
   premiumStyles: 'pro', // premium handwriting styles
   advancedInk: 'pro', // instruments, colour picker, darkness, pressure, texture, variation…
   perElement: 'pro', // different handwriting settings per text box
@@ -29,6 +32,9 @@ export const can = (feature) => FEATURES[feature] !== 'pro' || isPro();
 
 const COPY = {
   aiLayout: ['Save time with AI Auto-Layout', 'Paste text or upload images, and Pro will automatically organize your content across perfectly aligned notebook pages.'],
+  buildProject: ['Build a whole project with AI', 'Upload your rubric and notes, describe the project, and Pro writes a complete, editable draft across your notebook pages, checking every requirement.'],
+  editProject: ['Edit your project by asking', 'Tell Pro what to change, like “make the introduction shorter”. You preview every change before it’s applied.'],
+  drawings: ['Hand-drawn illustrations', 'Pro turns photos, screenshots and diagrams into simple pen or pencil sketches that fit your notebook pages.'],
   premiumStyles: ['Premium handwriting styles', 'Pro unlocks the full handwriting library, including flowing cursive and quick, natural styles.'],
   advancedInk: ['More realistic ink with Pro', 'Gel, fountain pen and pencil effects, custom colours, ink darkness, pressure, texture and natural letter variation.'],
   perElement: ['Different styles per element', 'With Pro, a title can be black gel pen while the notes below are blue ballpoint.'],
@@ -44,8 +50,9 @@ export function upgradeDialog(feature = 'aiLayout') {
     h('div.pro-hero', h('span.pro-badge.big', 'PRO')),
     h('p', text),
     h('ul.pro-list',
-      h('li', 'AI Auto-Layout across as many pages as needed'),
-      h('li', 'Read text from screenshots and photos'),
+      h('li', 'Build complete projects from a rubric and notes'),
+      h('li', 'Edit the whole project by describing changes'),
+      h('li', 'AI Auto-Layout and hand-drawn illustrations'),
       h('li', 'Premium handwriting styles and realistic ink'),
       h('li', 'Different handwriting for each element')),
     h('p.muted.small', 'Test mode: there are no payments yet. “Upgrade to Pro” simply switches this browser to Pro.'));

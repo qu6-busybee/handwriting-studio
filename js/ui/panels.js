@@ -13,6 +13,24 @@ import { alignButtons, align } from './props.js';
 import { openPaperLibrary, libraryView } from './paperstudio.js';
 import { getPlan, setPlan, isPro, can, upgradeDialog, proBadge } from '../plan.js';
 import { openAutoLayout } from '../layout/autolayout.js';
+import { openProjectBuilder } from '../ai/builder.js';
+import { openEditProject } from '../ai/editor.js';
+import { openHistory } from '../ai/history.js';
+import { openHandDrawn } from '../drawing/drawdlg.js';
+
+// The compact "AI Tools" menu (Step 2). Pro tools show a PRO tag for Basic.
+export function aiTools() {
+  const pro = (f) => (can(f) ? null : 'PRO');
+  const run = (f, fn) => () => (can(f) ? fn() : upgradeDialog(f));
+  return [
+    { label: 'Auto-Layout', key: pro('aiLayout'), run: run('aiLayout', openAutoLayout) },
+    { label: 'Build Project', key: pro('buildProject'), run: run('buildProject', openProjectBuilder) },
+    { label: 'Edit Project', key: pro('editProject'), run: run('editProject', openEditProject) },
+    { label: 'Hand-Drawn Images', key: pro('drawings'), run: run('drawings', () => openHandDrawn(S.selectedOne()?.type === 'image' ? S.selectedOne() : null)) },
+    '-',
+    { label: 'Version history', run: openHistory },
+  ];
+}
 import { confirmDialog } from './modal.js';
 
 const { state, bus } = S;
@@ -27,6 +45,7 @@ function menu(btn, items) {
     const r = btn.getBoundingClientRect();
     Object.assign(m.style, { left: r.left + 'px', top: r.bottom + 4 + 'px' });
     document.body.append(m);
+    m.style.left = Math.max(8, Math.min(r.left, innerWidth - m.offsetWidth - 8)) + 'px'; // stay on screen
     openMenu = { el: m, btn };
   });
 }
@@ -60,6 +79,7 @@ export function initTopbar() {
     { label: 'Open…', run: openProjectList },
     { label: 'Open from file…', run: openProjectFile },
     { label: 'Save a copy to file', run: saveProjectFile },
+    { label: 'Version history…', run: openHistory },
     '-',
     { label: 'Download PDF', run: () => exportPDF() },
     { label: 'Download transparent PNG', run: () => exportPNG() },
@@ -143,9 +163,9 @@ export function initTopbar() {
     if (step === 1) {
       actions.replaceChildren(h('button.btn.primary', { on: { click: () => S.setStep(2) } }, 'Continue to Editor →'));
     } else if (step === 2) {
-      actions.replaceChildren(
-        h('button.btn.al-btn', { title: 'AI Auto-Layout: paste text or upload images and let it organize your pages', on: { click: () => (can('aiLayout') ? openAutoLayout() : upgradeDialog('aiLayout')) } }, icon('feather', 15), 'AI Auto-Layout', !isPro() && proBadge()),
-        h('button.btn.primary', { on: { click: () => S.setStep(3) } }, 'Continue to Handwriting →'));
+      const ai = h('button.btn.al-btn', { title: 'Auto-Layout, Build Project, Edit Project and Hand-Drawn Images' }, icon('feather', 15), 'AI Tools ▾', !isPro() && proBadge());
+      menu(ai, aiTools);
+      actions.replaceChildren(ai, h('button.btn.primary', { on: { click: () => S.setStep(3) } }, 'Continue to Handwriting →'));
     } else {
       const hwStage = state.project.stage === 'handwriting';
       const stale = S.staleCount();
@@ -267,7 +287,12 @@ function toolBtn(tool, ic, label, key) {
 
 function insertPanel() {
   return h('div.lp',
-    h('button.btn.block.al-cta', { title: 'Paste text or add images and have it arranged across the pages', on: { click: () => (can('aiLayout') ? openAutoLayout() : upgradeDialog('aiLayout')) } }, icon('feather', 16), 'AI Auto-Layout…', !isPro() && proBadge()),
+    h('div.ai-tiles', ...[
+      ['buildProject', 'Build Project', 'Rubric + notes → full draft', openProjectBuilder],
+      ['editProject', 'Edit Project', 'Describe a change', openEditProject],
+      ['aiLayout', 'Auto-Layout', 'Organize your own text', openAutoLayout],
+      ['drawings', 'Hand-Drawn Image', 'Photo → pen sketch', () => openHandDrawn()],
+    ].map(([f, label, sub, fn]) => h('button.ai-tile', { on: { click: () => (can(f) ? fn() : upgradeDialog(f)) } }, h('b', label, !can(f) && proBadge()), h('span', sub)))),
     h('p.muted.small', 'Typed text uses an Arial-style font. You’ll choose handwriting in Step 3.'),
     h('h3', 'Text'),
     h('div.tiles',
@@ -382,7 +407,7 @@ function describe(o) {
 }
 function layersPanel() {
   const objs = [...state.project.pages[state.pageIndex].objects].reverse();
-  const ic = { text: 'type', shape: 'rect', path: 'pen', image: 'image' };
+  const ic = { text: 'type', shape: 'rect', path: 'pen', image: 'image', drawing: 'pen' };
   return h('div.lp',
     h('h3', 'Layers'),
     !objs.length && h('p.muted.small', 'Nothing on this page yet.'),
@@ -390,7 +415,7 @@ function layersPanel() {
       h('button.layer-main', { on: { click: (e) => {
         if (e.shiftKey || e.ctrlKey) { const s = new Set(state.selection); s.has(o.id) ? s.delete(o.id) : s.add(o.id); S.setSelection(s, { expand: false }); }
         else S.setSelection([o.id]);
-      } } }, icon(o.type === 'shape' ? o.shape : ic[o.type], 15), h('span', describe(o)), o.groupId && h('span.badge', 'group')),
+      } } }, icon(o.type === 'shape' ? o.shape : ic[o.type], 15), h('span', describe(o)), o.ai && h('span.badge.ai', { title: 'Written by AI — review it' }, 'AI'), o.groupId && h('span.badge', 'group')),
       h('button.icon-btn.tiny', { title: o.hidden ? 'Show' : 'Hide', on: { click: () => { o.hidden = !o.hidden; S.commit(); } } }, icon(o.hidden ? 'eye-off' : 'eye', 14)),
       h('button.icon-btn.tiny', { title: o.locked ? 'Unlock' : 'Lock', on: { click: () => { o.locked = !o.locked; S.commit(); } } }, icon(o.locked ? 'lock' : 'unlock', 14))))),
     state.selection.size > 0 && h('div', h('h3', 'Align'), alignButtons()),

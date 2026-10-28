@@ -1,4 +1,4 @@
-﻿# Handwriting Studio
+# Handwriting Studio
 
 Handwriting Studio is a browser editor for making realistic handwritten pages and printing them onto real ruled notebook paper. It works like a small, dark-mode Google Slides that's built around one sheet of notebook paper:
 
@@ -20,11 +20,20 @@ Open http://localhost:5173 (home page) or /app.html (the editor). Any static fil
 
 ## Three steps
 
-The editor is organised as **1 Choose Paper â†’ 2 Add Content â†’ 3 Handwriting & Print**. You can move between steps at any time without losing work.
+The editor is organised as **1 Choose Paper → 2 Add Content → 3 Handwriting & Print**. You can move between steps at any time without losing work.
 
 1. **Choose Paper:** the paper library (saved papers and templates, create, edit, duplicate, rename, delete), then **Continue to Editor**.
 2. **Add Content:** the drag-and-drop editor. Text is typed in an Arial-style font (Arimo, which has the same letter widths as Arial), with pages, layers, shapes and snapping. **AI Auto-Layout** (Pro) sits in the toolbar.
 3. **Handwriting & Print:** handwriting styles and settings with a live sample, then **Generate Handwriting**, **Example Print** and **Print**. Leaving Step 3 shows typed text again; generated handwriting is kept.
+
+## AI tools (Step 2 → "AI Tools")
+
+- **Build Project**: add a rubric, instructions, notes and reference files (PDF, Word, text, images) and describe the project. Claude writes a complete draft, a requirements checklist (shown in the right panel), and questions about anything missing. The draft is laid out on the lines as editable Arial text, across as many pages as needed. It never invents sources or personal experiences; those become red "[To add: …]" notes.
+- **Edit Project**: describe a change ("make the introduction shorter"). Scope: selection, this page, or the whole project. You see every change (added / changed / removed) and accept or reject it. Accepted edits reflow the pages; boxes you moved by hand stay put.
+- **Version history** (File menu or AI Tools): a copy is saved before every AI change; restore any of them.
+- **Hand-Drawn Images**: turns a photo, screenshot or diagram into a pen or pencil sketch made of vector lines (6 styles, colour, thickness, detail, simplify, smoothness, shading, darkness, background removal). Runs on the device. "Redraw with Claude" rebuilds diagrams as clean shapes with editable labels. Select an image and use "Turn into hand-drawn sketch" to convert one on the page.
+
+Build Project, Edit Project and "Redraw with Claude" use your own Anthropic API key (Console credits). Requests go straight from the browser to Anthropic.
 
 ## Basic and Pro (test mode)
 
@@ -35,13 +44,14 @@ The app has Basic and Pro feature levels, but **no accounts or payments yet**.
 
 | | Basic | Pro |
 |---|---|---|
-| Paper library, custom paper, manual editor, pages, Arial editing | âœ“ | âœ“ |
+| Paper library, custom paper, manual editor, pages, Arial editing | ✓ | ✓ |
 | Handwriting styles | 6 | 12 + your own |
 | Ink | 5 preset colours, stroke thickness | all presets, any colour/HEX, 7 instruments, darkness, pressure, opacity |
 | Style controls | style, size, neatness | + writing speed, slant, word/letter spacing, natural variation |
-| Per-element handwriting | â€” (document-wide) | âœ“ |
-| AI Auto-Layout, image-to-text | â€” | âœ“ |
-| Print, PDF/PNG export | âœ“ | âœ“ |
+| Per-element handwriting | — (document-wide) | ✓ |
+| AI Auto-Layout, image-to-text | — | ✓ |
+| AI Build Project, Edit Project, Hand-Drawn Images | — | ✓ |
+| Print, PDF/PNG export | ✓ | ✓ |
 
 **Not built yet (needed before charging money):**
 - Sign-up and login.
@@ -50,7 +60,7 @@ The app has Basic and Pro feature levels, but **no accounts or payments yet**.
 
 ## Workflow
 
-1. Pick your physical notebook paper (8 Ã— 10Â½ in loose-leaf filler is the default), or measure your own and save it as a preset.
+1. Pick your physical notebook paper (8 × 10½ in loose-leaf filler is the default), or measure your own and save it as a preset.
 2. Arrange text, shapes and diagrams. While you're editing, text shows in a plain digital font with no handwriting effects.
 3. When the layout is final, click **Generate Handwriting**. The approved text becomes pen or pencil marks with the same line breaks. Your typed text is never overwritten. **Back to editing** returns to plain text, and **Regenerate this section** re-writes one box.
 4. If you change text after generating, that box goes back to plain text and is outlined. Use **Regenerate changed** or **Generate this section** to update it.
@@ -68,14 +78,14 @@ The blue lines, red margin, paper colour and the dashed printable-area box are g
 
 **Editor**
 - Free placement of text boxes, shapes, freehand pen and highlighter strokes, and images.
-- Drag, resize (8 handles, Shift keeps the aspect ratio), rotate (Shift snaps to 15Â°), Alt-drag to duplicate.
+- Drag, resize (8 handles, Shift keeps the aspect ratio), rotate (Shift snaps to 15°), Alt-drag to duplicate.
 - Multi-select by Shift-click or marquee, with group and ungroup.
 - Layers panel with hide, lock and reorder; bring forward/back.
 - Snapping and guides to page edges, the red margin, the writing area and other objects. Text locks its first baseline onto the ruled lines.
 - Align and distribute.
 - Undo and redo (150 steps).
 - Multiple pages with thumbnails, reorder, duplicate and delete.
-- Vector zoom from 25% to 600% (Ctrl+wheel, Ctrl+=/âˆ’/0) and space-drag panning.
+- Vector zoom from 25% to 600% (Ctrl+wheel, Ctrl+=/−/0) and space-drag panning.
 - Copy, cut and paste between pages and projects; paste or drop images; paste plain text as a new text box.
 - Keyboard shortcuts: V, T, P, H, R, O, L, A, Delete, arrows (Shift = 5 mm or one ruled line), Ctrl+D, Ctrl+G, Ctrl+A and Ctrl+P.
 - Collapsible left and right panels.
@@ -96,9 +106,9 @@ The blue lines, red margin, paper colour and the dashed printable-area box are g
   - *Upload a font:* TTF, OTF or WOFF.
   - Characters you haven't provided fall back to a neat print style.
 
-**AI Auto-Layout** (toolbar, or **Insert â†’ AI Auto-Layoutâ€¦**)
+**AI Auto-Layout** (toolbar, or **Insert → AI Auto-Layout…**)
 - **Input:** paste or type text; import .txt, .md, .csv or .docx; add one or more images. Each image can be read with on-device OCR (Tesseract, loaded on first use) or placed as a diagram.
-- **Structure recognition:** headings and subheadings, paragraphs (re-joining lines that were hard-wrapped when copied), bulleted, numbered and nested lists, termâ€“definition pairs, questions with their answers, tables (tab, CSV or Markdown), and equations. You can review and correct each detected type before placing. Wording is never rewritten, summarised or dropped.
+- **Structure recognition:** headings and subheadings, paragraphs (re-joining lines that were hard-wrapped when copied), bulleted, numbered and nested lists, term–definition pairs, questions with their answers, tables (tab, CSV or Markdown), and equations. You can review and correct each detected type before placing. Wording is never rewritten, summarised or dropped.
 - **Placement:**
   - Text sits on the ruled lines, between the red margins and the top and bottom boundaries, at your handwriting size, after any existing content.
   - Pages are added as needed. Text is never shrunk and never runs past the bottom.
@@ -117,7 +127,7 @@ The blue lines, red margin, paper colour and the dashed printable-area box are g
 - **Live sample:** shows how the settings look as finished handwriting, even while the page is still in editing mode.
 - **Instruments:** ballpoint, gel, fountain, fine-tip, mechanical pencil, graphite pencil and marker. Each has its own texture filter and stroke behaviour.
 - **Colours:** standard, dark and light blue, black, blue-black, red, green, purple, any colour picker value, or a HEX code.
-- **Colour per word:** select words in the on-page editor and click a colour, or write `[red]â€¦[/]` / `[#hex]â€¦[/]`. Recolouring after generating keeps the handwriting.
+- **Colour per word:** select words in the on-page editor and click a colour, or write `[red]…[/]` / `[#hex]…[/]`. Recolouring after generating keeps the handwriting.
 - **Intensity:** ink darkness, pen pressure, stroke thickness, ink consistency, stroke variation, ink texture, pencil softness and opacity.
 - **Style:** print or cursive, style, size, neatness, writing speed, slant, word and letter spacing.
 - **Variation:** baseline, letter shape, and line-to-line consistency.
@@ -129,7 +139,7 @@ The blue lines, red margin, paper colour and the dashed printable-area box are g
 - Shapes and drawings can use any instrument and pressure too, for example a mechanical-pencil diagram.
 
 **Paper, printing and export**
-- Presets for wide, college and narrow ruling (8 Ã— 10Â½ in filler and Letter), A4 8 mm and 7 mm, and A5. Every measurement is editable, and a measure-across-many-lines helper sets precise spacing (see [docs/PAPER.md](docs/PAPER.md)).
+- Presets for wide, college and narrow ruling (8 × 10½ in filler and Letter), A4 8 mm and 7 mm, and A5. Every measurement is editable, and a measure-across-many-lines helper sets precise spacing (see [docs/PAPER.md](docs/PAPER.md)).
 - **Paper library and Paper Studio** (the **Paper Settings** button, and every new project):
   - **Library:** your saved papers, each with a preview, size and ruling, plus starting templates. Use, edit, duplicate, rename or delete a paper, or start from **+ Create New Paper**.
   - **Studio:** a large live preview with rulers and a compact panel. Drag the first line, the spacing line, the last line, any single line or the red margin; live measurements follow the cursor. Click a line to adjust just that one. Drafts autosave and can be resumed, with undo/redo.
@@ -144,7 +154,7 @@ The blue lines, red margin, paper colour and the dashed printable-area box are g
   - **Storage:** settings are saved per project, and paper presets are reusable across projects. Printer calibration stays independent of the paper settings.
 - **Alignment:**
   - Text sitting on a ruled line keeps its line number when the spacing or first line changes, and text at the margins follows them.
-  - With "Size follows lines" on, handwriting scales with the line spacing (e.g. 8.7 mm â†’ 7.1 mm).
+  - With "Size follows lines" on, handwriting scales with the line spacing (e.g. 8.7 mm → 7.1 mm).
   - The margins are optional snapping edges. Hold Alt while dragging, or turn off "Sit on ruled lines", to place text freely.
 - **Print modes:** *Handwriting only* (the default, for real lined paper), *Paper template only* (lines and margins on blank paper) and *Handwriting + paper*. Previews, printing and PDF/PNG exports all follow the selected mode. The paper colour and punch holes are never printed.
 - The notebook overlay is visual only and is never printed or exported in "Handwriting only" mode.
@@ -152,7 +162,7 @@ The blue lines, red margin, paper colour and the dashed printable-area box are g
 - **Printable area:** a dashed box shows where your printer can reach, based on its unprintable edge and how the sheet is fed. The print preview warns about items that would be clipped.
 - **Units:** inches or millimetres in the properties panel and the calibration dialog.
 - **Example Print:** a sample page with Preview A (on notebook paper) and Preview B (printer output), plus **Print Test Page**.
-- **Calibration:** pick the paper and the printer media (same as notebook, Letter or A4), and set where the sheet sits (left, centre or right guide). Then print a test page, enter the measured crosshair positions to get scale and offset correction, fine-tune in Â±0.25 mm nudges, and print a verification page. Profiles are saved in the browser.
+- **Calibration:** pick the paper and the printer media (same as notebook, Letter or A4), and set where the sheet sits (left, centre or right guide). Then print a test page, enter the measured crosshair positions to get scale and offset correction, fine-tune in ±0.25 mm nudges, and print a verification page. Profiles are saved in the browser.
 - **Printing:** direct browser printing at exact physical size (`@page` size with zero margins), multi-page, with the printer correction applied.
 - **Print preview:** shows exactly where ink lands, with an optional reference-only notebook overlay.
 - **Exports:** multi-page PDF at 200, 300 or 600 dpi (plain, or with the printer profile baked in) and transparent PNG per page.
@@ -186,7 +196,7 @@ js/store.js             tiny IndexedDB wrapper
 js/paper.js             paper presets, ruling geometry, overlay
 js/print.js             print, preview, calibration, PDF/PNG export, project files
 js/editor/canvas.js     page SVG, pointer tools, transforms, snapping, zoom, text editing, shortcuts
-js/editor/render.js     objects â†’ SVG (handwriting, hand-drawn shapes, ink filter)
+js/editor/render.js     objects → SVG (handwriting, hand-drawn shapes, ink filter)
 js/handwriting/engine.js   layout + variation engine
 js/handwriting/styles.js   style registry, font/glyph providers (opentype.js)
 js/handwriting/capture.js  draw/scan/upload personal handwriting
