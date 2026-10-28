@@ -536,3 +536,8 @@ p.warn { color: #f0c98a; }
 .draw-right input[type=range] { width: 100%; }
 .draw-dialog .swatch { width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line); cursor: pointer; padding: 0; }
 @media (max-width: 760px) { .draw-layout { grid-template-columns: 1fr; } .draw-pair { grid-template-columns: 1fr; } }
+
+/* Dialogs that accept dropped files */
+.modal.dropping { outline: 2px dashed var(--accent); outline-offset: -6px; }
+.modal.dropping::after { content: 'Drop files to add them'; position: absolute; inset: 0; display: grid; place-items: center; background: rgba(20, 22, 28, 0.82); color: var(--accent); font-weight: 600; border-radius: inherit; pointer-events: none; }
+.modal { position: relative; }

@@ -133,6 +133,36 @@ export function pickFile(accept) {
   });
 }
 
+// While `el` (a dialog) is open, files dropped anywhere on the page or pasted
+// with Ctrl V go to onFiles instead of the canvas. Pasted text is untouched.
+export function acceptFiles(el, onFiles, filter = () => true) {
+  const pick = (list) => [...(list || [])].filter(filter);
+  const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+  const live = () => {
+    if (el.isConnected) return true;
+    for (const [t, f] of handlers) document.removeEventListener(t, f, true);
+    return false;
+  };
+  const handlers = [
+    ['dragover', (e) => { if (!live() || !hasFiles(e)) return; e.preventDefault(); e.stopPropagation(); el.classList.add('dropping'); }],
+    ['dragleave', (e) => { if (live() && !e.relatedTarget) el.classList.remove('dropping'); }],
+    ['drop', (e) => {
+      if (!live() || !hasFiles(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      el.classList.remove('dropping');
+      const files = pick(e.dataTransfer.files);
+      if (files.length) onFiles(files); else toast('That type of file can’t be added here');
+    }],
+    ['paste', (e) => {
+      if (!live()) return;
+      const files = pick(e.clipboardData?.files);
+      if (files.length) { e.preventDefault(); e.stopPropagation(); onFiles(files); }
+    }],
+  ];
+  for (const [t, f] of handlers) document.addEventListener(t, f, true);
+}
+
 export const bufToB64 = (buf) => {
   const bytes = new Uint8Array(buf);
   let s = '';

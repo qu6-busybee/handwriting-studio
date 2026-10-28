@@ -1,7 +1,7 @@
 // "Hand-Drawn Images": turn a photo, screenshot, diagram or chart into a
 // simple pen or pencil illustration made of vector strokes. The original
 // picture is kept with the drawing so it can be redrawn in another style.
-import { h, toast, uid, svg, readFile, debounce, smoothPath } from '../util.js';
+import { h, toast, uid, svg, readFile, debounce, smoothPath, acceptFiles } from '../util.js';
 import * as S from '../state.js';
 import { openModal } from '../ui/modal.js';
 import { writingBox } from '../paper.js';
@@ -35,7 +35,7 @@ export function openHandDrawn(target = null) {
 
   const show = () => {
     if (!src) {
-      stage.replaceChildren(h('div.draw-empty', h('p', 'Upload a photo, screenshot, diagram or chart — or paste one (Ctrl V).'), h('button.btn.primary', { on: { click: pick } }, 'Choose image…')));
+      stage.replaceChildren(h('div.draw-empty', h('p', 'Drop a photo, screenshot, diagram or chart here, or paste one (Ctrl V).'), h('button.btn.primary', { on: { click: pick } }, 'Choose image…')));
       return;
     }
     const orig = h('img.draw-orig', { src, alt: 'Original' });
@@ -81,10 +81,7 @@ export function openHandDrawn(target = null) {
     i.onchange = () => useFile(i.files[0]);
     i.click();
   }
-  m.el.addEventListener('paste', (e) => {
-    const f = [...(e.clipboardData?.files || [])].find((x) => x.type.startsWith('image/'));
-    if (f) { e.preventDefault(); useFile(f); }
-  });
+  acceptFiles(m.el, (fs) => useFile(fs[0]), (f) => /^image\/(png|jpeg|gif|webp)$/.test(f.type));
 
   // ---------- controls ----------
   const sliders = new Map();

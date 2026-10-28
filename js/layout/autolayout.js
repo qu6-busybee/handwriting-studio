@@ -1,7 +1,7 @@
 // "AI Auto-Layout" dialog: paste/type text, import files, add images (read
 // with on-device OCR or placed as diagrams), review the detected structure,
 // then lay it all out on the notebook pages in plain editing mode.
-import { h, toast, debounce, readFile } from '../util.js';
+import { h, toast, debounce, readFile, acceptFiles } from '../util.js';
 import * as S from '../state.js';
 import { openModal } from '../ui/modal.js';
 import { seg } from '../print.js';
@@ -113,49 +113,56 @@ export function openAutoLayout() {
     refresh();
   });
 
-  const addImages = async () => {
+  const addImages = () => {
     const input = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/gif,image/webp', multiple: true });
-    input.onchange = async () => {
-      for (const file of input.files) {
-        const src = await readFile(file);
-        const choice = await askImageUse(file.name, !!getKey());
-        if (!choice) continue;
-        if (choice === 'ocr') {
-          status.textContent = `Reading text from ${file.name}… (first use downloads the OCR engine, ~10 MB)`;
-          try {
-            const text = await ocr(src, (pct) => { status.textContent = `Reading text from ${file.name}… ${pct}%`; });
-            insertAtCursor(text || '');
-            status.textContent = text ? `Added text from ${file.name}. Check it; OCR can misread characters.` : `No text found in ${file.name}.`;
-          } catch (e) {
-            status.textContent = `Couldn’t read ${file.name}: ${e.message}`;
-          }
-          continue;
-        }
-        const size = await imageSize(src);
-        images.push({ n: images.length + 1, src, ...size, name: file.name });
-        insertAtCursor(choice === 'diagram' ? `⟦diagram ${images.length}⟧` : `⟦image ${images.length}⟧`);
-        if (choice === 'claude') status.textContent = `${file.name} will be read by Claude. Click “Recognize with Claude” when your content is ready.`;
-      }
-    };
+    input.onchange = () => useImages([...input.files]);
     input.click();
+  };
+  const useImages = async (list) => {
+    for (const file of list) {
+      const src = await readFile(file);
+      const choice = await askImageUse(file.name, !!getKey());
+      if (!choice) continue;
+      if (choice === 'ocr') {
+        status.textContent = `Reading text from ${file.name}… (first use downloads the OCR engine, ~10 MB)`;
+        try {
+          const text = await ocr(src, (pct) => { status.textContent = `Reading text from ${file.name}… ${pct}%`; });
+          insertAtCursor(text || '');
+          status.textContent = text ? `Added text from ${file.name}. Check it; OCR can misread characters.` : `No text found in ${file.name}.`;
+        } catch (e) {
+          status.textContent = `Couldn’t read ${file.name}: ${e.message}`;
+        }
+        continue;
+      }
+      const size = await imageSize(src);
+      images.push({ n: images.length + 1, src, ...size, name: file.name });
+      insertAtCursor(choice === 'diagram' ? `⟦diagram ${images.length}⟧` : `⟦image ${images.length}⟧`);
+      if (choice === 'claude') status.textContent = `${file.name} will be read by Claude. Click “Recognize with Claude” when your content is ready.`;
+    }
   };
 
   const importDoc = () => {
     const input = h('input', { type: 'file', accept: '.txt,.md,.markdown,.csv,.tsv,.docx,text/plain' });
-    input.onchange = async () => {
-      const f = input.files[0];
-      if (!f) return;
-      try {
-        let text = await readDocument(f);
-        if (/\.csv$/i.test(f.name)) text = text.split('\n').map((l) => l.split(',').join('\t')).join('\n');
-        insertAtCursor(text);
-        status.textContent = `Imported ${f.name}.`;
-      } catch (e) {
-        status.textContent = `Couldn’t import ${f.name}: ${e.message}`;
-      }
-    };
+    input.onchange = () => input.files[0] && useDoc(input.files[0]);
     input.click();
   };
+  const useDoc = async (f) => {
+    try {
+      let text = await readDocument(f);
+      if (/\.csv$/i.test(f.name)) text = text.split('\n').map((l) => l.split(',').join('\t')).join('\n');
+      insertAtCursor(text);
+      status.textContent = `Imported ${f.name}.`;
+    } catch (e) {
+      status.textContent = `Couldn’t import ${f.name}: ${e.message}`;
+    }
+  };
+  // Drop or paste images and documents anywhere while the dialog is open.
+  const isImage = (f) => /^image\/(png|jpeg|gif|webp)$/.test(f.type);
+  acceptFiles(m.el, async (files) => {
+    for (const f of files.filter((x) => !isImage(x))) await useDoc(f);
+    const imgs = files.filter(isImage);
+    if (imgs.length) useImages(imgs);
+  }, (f) => isImage(f) || /\.(txt|md|markdown|csv|tsv|docx)$/i.test(f.name));
 
   // ---------- Claude (optional) ----------
   const runClaude = async (btn) => {
@@ -234,7 +241,7 @@ export function openAutoLayout() {
       h('div.row',
         h('button.btn', { on: { click: addImages } }, 'Add images…'),
         h('button.btn', { on: { click: importDoc } }, 'Import document…'),
-        h('span.muted.small', '.txt, .md, .csv, .docx')),
+        h('span.muted.small', '.txt, .md, .csv, .docx · or drop / paste files')),
       status),
     h('div.al-right',
       h('p.small.muted', `Paper: ${paperLabel(state.project.paper)}. Content is placed on the blue lines between the red margins, using your handwriting size. New pages are added as needed.`),
